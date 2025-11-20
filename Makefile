@@ -1,6 +1,6 @@
 NAME = sing-box
 COMMIT = $(shell git rev-parse --short HEAD)
-TAGS ?= $(shell cat release/DEFAULT_BUILD_TAGS)
+TAGS ?= $(shell cat release/DEFAULT_BUILD_TAGS),with_awg
 
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
