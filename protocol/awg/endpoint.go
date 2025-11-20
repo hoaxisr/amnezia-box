@@ -41,10 +41,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 
 	dial, err := dialer.NewWithOptions(dialer.Options{
-		Context:          ctx,
-		Options:          options.DialerOptions,
-		RemoteIsDomain:   false,
-		ResolverOnDetour: true,
+		Context:        ctx,
+		Options:        options.DialerOptions,
+		RemoteIsDomain: false,
+		DirectOutbound: true,
 	})
 	if err != nil {
 		return nil, err
@@ -75,17 +75,13 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 
-	dev, err := awg.NewDevice(ctx, logger, dial, awg.DeviceOpts{
+	dev, err := awg.NewDevice(ctx, logger, dial, ipc, awg.DeviceOpts{
 		Address:     options.Address,
 		AllowedIps:  allowedIps.Prefixes(),
 		ExcludedIps: excludedIps.Prefixes(),
 		MTU:         options.MTU,
 	})
 	if err != nil {
-		return nil, err
-	}
-
-	if err = dev.SetIpcConfig(ipc); err != nil {
 		return nil, err
 	}
 
