@@ -10,13 +10,9 @@ import (
 	"github.com/amnezia-vpn/amneziawg-go/device"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
 )
 
 type DeviceOpts struct {
@@ -27,29 +23,19 @@ type DeviceOpts struct {
 }
 
 type Device struct {
-	wgDevice  *device.Device
-	tun       *tun_adapter
-	tunDialer network.Dialer
+	awgDevice *device.Device
+	tun       tunAdapter
 }
 
 func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, opts DeviceOpts) (*Device, error) {
-	networkManager := service.FromContext[adapter.NetworkManager](ctx)
+	// tun, err := newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
+	// if err != nil {
+	// 	return nil, exceptions.Cause(err, "create tunnel")
+	// }
 
-	tun, err := newTun(opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, networkManager, logger)
+	tun, err := newNetworkTun(opts.Address, opts.MTU)
 	if err != nil {
-		return nil, exceptions.Cause(err, "create tunnel")
-	}
-
-	tunName, err := tun.Name()
-	if err != nil {
-		return nil, exceptions.Cause(err, "get tunnel name")
-	}
-
-	tunDialer, err := dialer.NewDefault(ctx, option.DialerOptions{
-		BindInterface: tunName,
-	})
-	if err != nil {
-		return nil, exceptions.Cause(err, "get in-tunnel dialer")
+		return nil, err
 	}
 
 	wgLogger := &device.Logger{
@@ -62,9 +48,8 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 	}
 
 	return &Device{
-		wgDevice:  device.NewDevice(tun, newBind(dial), wgLogger),
+		awgDevice: device.NewDevice(tun, newBind(dial), wgLogger),
 		tun:       tun,
-		tunDialer: tunDialer,
 	}, nil
 }
 
@@ -76,17 +61,17 @@ func (d *Device) Start(stage adapter.StartStage) error {
 }
 
 func (d *Device) Close() error {
-	return d.tun.Close()
+	return d.awgDevice.Down()
 }
 
 func (d *Device) SetIpcConfig(s string) error {
-	return d.wgDevice.IpcSet(s)
+	return d.awgDevice.IpcSet(s)
 }
 
-func (e *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
-	return e.tunDialer.DialContext(ctx, network, destination)
+func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
+	return d.tun.DialContext(ctx, network, destination)
 }
 
-func (e *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
-	return e.tunDialer.ListenPacket(ctx, destination)
+func (d *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
+	return d.tun.ListenPacket(ctx, destination)
 }
