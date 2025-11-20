@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/hex"
+	"net"
 	"net/netip"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -13,8 +14,10 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/awg"
+	"github.com/sagernet/sing/common/bufio"
 	"github.com/sagernet/sing/common/format"
-	"github.com/sagernet/sing/common/network"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 
 	"go4.org/netipx"
 )
@@ -26,6 +29,10 @@ func RegisterEndpoint(registry *endpoint.Registry) {
 type Endpoint struct {
 	*awg.Device
 	endpoint.Adapter
+	address   []netip.Prefix
+	router    adapter.Router
+	logger    log.ContextLogger
+	dnsRouter adapter.DNSRouter
 }
 
 func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AwgEndpointOptions) (adapter.Endpoint, error) {
@@ -84,7 +91,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 
 	return &Endpoint{
 		Device:  dev,
-		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{network.NetworkTCP, network.NetworkUDP}, options.DialerOptions),
+		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
+		address: options.Address,
+		router:  router,
+		logger:  logger,
 	}, nil
 }
 
@@ -170,4 +180,48 @@ func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
 		}
 	}
 	return s, nil
+}
+
+func (e *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+	var metadata adapter.InboundContext
+	metadata.Inbound = e.Tag()
+	metadata.InboundType = e.Type()
+	metadata.Source = source
+	metadata.Destination = destination
+	for _, addr := range e.address {
+		if addr.Contains(destination.Addr) {
+			metadata.OriginDestination = destination
+			if destination.Addr.Is4() {
+				metadata.Destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
+			} else {
+				metadata.Destination.Addr = netip.IPv6Loopback()
+			}
+			conn = bufio.NewNATPacketConn(bufio.NewNetPacketConn(conn), metadata.OriginDestination, metadata.Destination)
+		}
+	}
+	e.logger.InfoContext(ctx, "inbound packet connection from ", source)
+	e.logger.InfoContext(ctx, "inbound packet connection to ", destination)
+	e.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
+}
+
+func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+	var metadata adapter.InboundContext
+	metadata.Inbound = w.Tag()
+	metadata.InboundType = w.Type()
+	metadata.Source = source
+	for _, addr := range w.address {
+		if addr.Contains(destination.Addr) {
+			metadata.OriginDestination = destination
+			if destination.Addr.Is4() {
+				destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
+			} else {
+				destination.Addr = netip.IPv6Loopback()
+			}
+			break
+		}
+	}
+	metadata.Destination = destination
+	w.logger.InfoContext(ctx, "inbound connection from ", source)
+	w.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
+	w.router.RouteConnectionEx(ctx, conn, metadata, onClose)
 }
