@@ -3,7 +3,7 @@ package include
 import (
 	"context"
 
-	"github.com/sagernet/sing-box"
+	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/inbound"
@@ -104,6 +104,7 @@ func EndpointRegistry() *endpoint.Registry {
 
 	registerWireGuardEndpoint(registry)
 	registerTailscaleEndpoint(registry)
+	registerAwgEndpoint(registry)
 
 	return registry
 }

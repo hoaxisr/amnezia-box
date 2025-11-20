@@ -28,6 +28,7 @@ const (
 	TypeDERP         = "derp"
 	TypeResolved     = "resolved"
 	TypeSSMAPI       = "ssm-api"
+	TypeAwg          = "awg"
 )
 
 const (
@@ -87,6 +88,8 @@ func ProxyDisplayName(proxyType string) string {
 		return "Selector"
 	case TypeURLTest:
 		return "URLTest"
+	case TypeAwg:
+		return "Awg"
 	default:
 		return "Unknown"
 	}
