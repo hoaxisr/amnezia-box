@@ -78,7 +78,8 @@ func (d *Device) Start(stage adapter.StartStage) error {
 }
 
 func (d *Device) Close() error {
-	return d.awgDevice.Down()
+	d.awgDevice.Close()
+	return nil
 }
 
 func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
