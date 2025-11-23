@@ -76,10 +76,11 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 
 	dev, err := awg.NewDevice(ctx, logger, dial, ipc, awg.DeviceOpts{
-		Address:     options.Address,
-		AllowedIps:  allowedIps.Prefixes(),
-		ExcludedIps: excludedIps.Prefixes(),
-		MTU:         options.MTU,
+		UseIntegratedTun: options.UseIntegratedTun,
+		Address:          options.Address,
+		AllowedIps:       allowedIps.Prefixes(),
+		ExcludedIps:      excludedIps.Prefixes(),
+		MTU:              options.MTU,
 	})
 	if err != nil {
 		return nil, err

@@ -11,6 +11,7 @@ import (
 	"github.com/amnezia-vpn/amneziawg-go/device"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing/common/exceptions"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
 	"github.com/sagernet/sing/common/metadata"
@@ -18,10 +19,11 @@ import (
 )
 
 type DeviceOpts struct {
-	Address     []netip.Prefix
-	AllowedIps  []netip.Prefix
-	ExcludedIps []netip.Prefix
-	MTU         uint32
+	UseIntegratedTun bool
+	Address          []netip.Prefix
+	AllowedIps       []netip.Prefix
+	ExcludedIps      []netip.Prefix
+	MTU              uint32
 }
 
 type Device struct {
@@ -33,14 +35,21 @@ type Device struct {
 }
 
 func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, ipcConfig string, opts DeviceOpts) (*Device, error) {
-	// tun, err := newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
-	// if err != nil {
-	// 	return nil, exceptions.Cause(err, "create tunnel")
-	// }
+	var (
+		tun tunAdapter
+		err error
+	)
 
-	tun, err := newNetworkTun(opts.Address, opts.MTU)
-	if err != nil {
-		return nil, err
+	if opts.UseIntegratedTun {
+		tun, err = newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
+		if err != nil {
+			return nil, exceptions.Cause(err, "create tunnel")
+		}
+	} else {
+		tun, err = newNetworkTun(opts.Address, opts.MTU)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	awgLogger := &device.Logger{
