@@ -40,6 +40,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		options.MTU = 1408
 	}
 
+	options.UDPFragmentDefault = true
 	dial, err := dialer.NewWithOptions(dialer.Options{
 		Context:        ctx,
 		Options:        options.DialerOptions,
