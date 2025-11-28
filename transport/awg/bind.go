@@ -9,50 +9,45 @@ import (
 	"syscall"
 
 	"github.com/amnezia-vpn/amneziawg-go/conn"
-	"github.com/sagernet/sing/common/exceptions"
-	"github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/common/network"
+	E "github.com/sagernet/sing/common/exceptions"
+	M "github.com/sagernet/sing/common/metadata"
+	N "github.com/sagernet/sing/common/network"
 )
 
 var _ conn.Bind = (*bind_adapter)(nil)
 
 type bind_adapter struct {
-	conn4  *net.UDPConn
-	conn6  *net.UDPConn
-	dialer network.Dialer
+	conn4  net.PacketConn
+	conn6  net.PacketConn
+	dialer N.Dialer
 	ctx    context.Context
 	mutex  sync.Mutex
 }
 
-func newBind(dial network.Dialer) conn.Bind {
+func newBind(dial N.Dialer) conn.Bind {
 	return &bind_adapter{
 		dialer: dial,
 	}
 }
 
-func (b *bind_adapter) connect(addr netip.Addr, port uint16) (*net.UDPConn, error) {
-	conn, err := b.dialer.ListenPacket(b.ctx, metadata.Socksaddr{Addr: addr, Port: port})
-	if err != nil {
-		return nil, err
-	}
-
-	udpConn, ok := conn.(*net.UDPConn)
-	if !ok {
-		conn.Close()
-		return nil, errors.ErrUnsupported
-	}
-
-	return udpConn, nil
+func (b *bind_adapter) connect(addr netip.Addr, port uint16) (net.PacketConn, error) {
+	return b.dialer.ListenPacket(b.ctx, M.Socksaddr{Addr: addr, Port: port})
 }
 
-func (*bind_adapter) receive(c *net.UDPConn) conn.ReceiveFunc {
+func (b *bind_adapter) receive(c net.PacketConn) conn.ReceiveFunc {
 	return func(packets [][]byte, sizes []int, eps []conn.Endpoint) (n int, err error) {
-		n, peerAp, err := c.ReadFromUDPAddrPort(packets[0])
+		n, addr, err := c.ReadFrom(packets[0])
 		if err != nil {
-			return 0, err
+			return 0, E.Cause(err, "read data")
 		}
+
+		bindEp, err := b.ParseEndpoint(addr.String())
+		if err != nil {
+			return 0, E.Cause(err, "parse endpoint")
+		}
+
 		sizes[0] = n
-		eps[0] = &bind_endpoint{AddrPort: peerAp}
+		eps[0] = bindEp
 		return 1, nil
 	}
 }
@@ -67,7 +62,7 @@ func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uin
 
 	conn4, err := b.connect(netip.IPv4Unspecified(), port)
 	if err != nil && !errors.Is(err, syscall.EAFNOSUPPORT) {
-		return nil, 0, exceptions.Cause(err, "create ipv4 connection")
+		return nil, 0, E.Cause(err, "create ipv4 connection")
 	}
 	if conn4 != nil {
 		fns = append(fns, b.receive(conn4))
@@ -75,7 +70,7 @@ func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uin
 
 	conn6, err := b.connect(netip.IPv6Unspecified(), port)
 	if err != nil && !errors.Is(err, syscall.EAFNOSUPPORT) {
-		return nil, 0, exceptions.Cause(err, "create ipv6 connection")
+		return nil, 0, E.Cause(err, "create ipv6 connection")
 	}
 	if conn6 != nil {
 		fns = append(fns, b.receive(conn6))
@@ -111,20 +106,29 @@ func (b *bind_adapter) SetMark(mark uint32) error {
 }
 
 func (b *bind_adapter) Send(bufs [][]byte, ep conn.Endpoint) error {
-	var conn *net.UDPConn
+	var conn net.PacketConn
 	if ep.DstIP().Is6() {
 		conn = b.conn6
 	} else {
 		conn = b.conn4
 	}
 
-	udpEp, ok := ep.(*bind_endpoint)
+	if conn == nil {
+		return errors.ErrUnsupported
+	}
+
+	bindEp, ok := ep.(*bind_endpoint)
 	if !ok {
 		return errors.ErrUnsupported
 	}
 
+	udpAddr := &net.UDPAddr{
+		IP:   bindEp.AddrPort.Addr().AsSlice(),
+		Port: int(bindEp.AddrPort.Port()),
+	}
+
 	for _, buf := range bufs {
-		if _, err := conn.WriteToUDPAddrPort(buf, udpEp.AddrPort); err != nil {
+		if _, err := conn.WriteTo(buf, udpAddr); err != nil {
 			return err
 		}
 	}
@@ -135,8 +139,9 @@ func (b *bind_adapter) Send(bufs [][]byte, ep conn.Endpoint) error {
 func (b *bind_adapter) ParseEndpoint(s string) (conn.Endpoint, error) {
 	ap, err := netip.ParseAddrPort(s)
 	if err != nil {
-		return nil, err
+		return nil, E.Cause(err, "parse addrport")
 	}
+
 	return &bind_endpoint{AddrPort: ap}, nil
 }
 
