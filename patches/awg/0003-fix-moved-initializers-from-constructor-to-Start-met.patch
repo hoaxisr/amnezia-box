@@ -1,0 +1,133 @@
+From 5d489494bd46c379ff3dec3d37306c235e798a9d Mon Sep 17 00:00:00 2001
+From: Yaroslav Gurov <ygurov@proton.me>
+Date: Fri, 21 Nov 2025 00:41:05 +0100
+Subject: [PATCH 03/12] fix: moved initializers from constructor to Start
+ methods
+
+---
+ protocol/awg/endpoint.go | 14 +++++---------
+ transport/awg/device.go  | 29 +++++++++++++++++++++--------
+ 2 files changed, 26 insertions(+), 17 deletions(-)
+
+diff --git a/protocol/awg/endpoint.go b/protocol/awg/endpoint.go
+index 64bb8556..bd36a178 100644
+--- a/protocol/awg/endpoint.go
++++ b/protocol/awg/endpoint.go
+@@ -41,10 +41,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 	}
+ 
+ 	dial, err := dialer.NewWithOptions(dialer.Options{
+-		Context:          ctx,
+-		Options:          options.DialerOptions,
+-		RemoteIsDomain:   false,
+-		ResolverOnDetour: true,
++		Context:        ctx,
++		Options:        options.DialerOptions,
++		RemoteIsDomain: false,
++		DirectOutbound: true,
+ 	})
+ 	if err != nil {
+ 		return nil, err
+@@ -75,7 +75,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 		return nil, err
+ 	}
+ 
+-	dev, err := awg.NewDevice(ctx, logger, dial, awg.DeviceOpts{
++	dev, err := awg.NewDevice(ctx, logger, dial, ipc, awg.DeviceOpts{
+ 		Address:     options.Address,
+ 		AllowedIps:  allowedIps.Prefixes(),
+ 		ExcludedIps: excludedIps.Prefixes(),
+@@ -85,10 +85,6 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 		return nil, err
+ 	}
+ 
+-	if err = dev.SetIpcConfig(ipc); err != nil {
+-		return nil, err
+-	}
+-
+ 	return &Endpoint{
+ 		Device:  dev,
+ 		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
+diff --git a/transport/awg/device.go b/transport/awg/device.go
+index 184acd54..db6971ae 100644
+--- a/transport/awg/device.go
++++ b/transport/awg/device.go
+@@ -7,9 +7,11 @@ import (
+ 	"net/netip"
+ 	"strings"
+ 
++	"github.com/amnezia-vpn/amneziawg-go/conn"
+ 	"github.com/amnezia-vpn/amneziawg-go/device"
+ 
+ 	"github.com/sagernet/sing-box/adapter"
++	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/logger"
+ 	"github.com/sagernet/sing/common/metadata"
+ 	"github.com/sagernet/sing/common/network"
+@@ -25,9 +27,12 @@ type DeviceOpts struct {
+ type Device struct {
+ 	awgDevice *device.Device
+ 	tun       tunAdapter
++	bind      conn.Bind
++	logger    *device.Logger
++	ipcConfig string
+ }
+ 
+-func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, opts DeviceOpts) (*Device, error) {
++func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, ipcConfig string, opts DeviceOpts) (*Device, error) {
+ 	// tun, err := newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
+ 	// if err != nil {
+ 	// 	return nil, exceptions.Cause(err, "create tunnel")
+@@ -38,7 +43,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
+ 		return nil, err
+ 	}
+ 
+-	wgLogger := &device.Logger{
++	awgLogger := &device.Logger{
+ 		Verbosef: func(format string, args ...interface{}) {
+ 			logger.Debug(fmt.Sprintf(strings.ToLower(format), args...))
+ 		},
+@@ -48,8 +53,10 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
+ 	}
+ 
+ 	return &Device{
+-		awgDevice: device.NewDevice(tun, newBind(dial), wgLogger),
+ 		tun:       tun,
++		bind:      newBind(dial),
++		logger:    awgLogger,
++		ipcConfig: ipcConfig,
+ 	}, nil
+ }
+ 
+@@ -57,17 +64,23 @@ func (d *Device) Start(stage adapter.StartStage) error {
+ 	if stage != adapter.StartStateStart {
+ 		return nil
+ 	}
+-	return d.tun.Start()
++
++	d.awgDevice = device.NewDevice(d.tun, d.bind, d.logger)
++	if err := d.awgDevice.IpcSet(d.ipcConfig); err != nil {
++		return E.Cause(err, "set ipc config")
++	}
++
++	if err := d.tun.Start(); err != nil {
++		return E.Cause(err, "tun start")
++	}
++
++	return d.awgDevice.Up()
+ }
+ 
+ func (d *Device) Close() error {
+ 	return d.awgDevice.Down()
+ }
+ 
+-func (d *Device) SetIpcConfig(s string) error {
+-	return d.awgDevice.IpcSet(s)
+-}
+-
+ func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
+ 	return d.tun.DialContext(ctx, network, destination)
+ }
+-- 
+2.52.0
+

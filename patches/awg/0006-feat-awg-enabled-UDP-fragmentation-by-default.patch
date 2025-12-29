@@ -1,0 +1,24 @@
+From d0c68faecb1d262f86e84bd85a22cca3cc7084f0 Mon Sep 17 00:00:00 2001
+From: Yaroslav Gurov <ygurov@proton.me>
+Date: Mon, 24 Nov 2025 22:46:09 +0100
+Subject: [PATCH 06/12] feat: [awg] enabled UDP fragmentation by default
+
+---
+ protocol/awg/endpoint.go | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/protocol/awg/endpoint.go b/protocol/awg/endpoint.go
+index e898ee78..0a8fc346 100644
+--- a/protocol/awg/endpoint.go
++++ b/protocol/awg/endpoint.go
+@@ -40,6 +40,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 		options.MTU = 1408
+ 	}
+ 
++	options.UDPFragmentDefault = true
+ 	dial, err := dialer.NewWithOptions(dialer.Options{
+ 		Context:        ctx,
+ 		Options:        options.DialerOptions,
+-- 
+2.52.0
+

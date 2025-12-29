@@ -58,8 +58,6 @@ require (
 
 //replace github.com/sagernet/sing => ../sing
 
-replace github.com/amnezia-vpn/amneziawg-go => ../amneziawg-go
-
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/ajg/form v1.5.1 // indirect
@@ -139,3 +137,5 @@ require (
 	gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
+
+replace github.com/amnezia-vpn/amneziawg-go => github.com/hoaxisr/amneziawg-go v0.3.0

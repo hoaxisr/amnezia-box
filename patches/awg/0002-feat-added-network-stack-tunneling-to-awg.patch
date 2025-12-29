@@ -1,0 +1,561 @@
+From 81744df17a76fa7c991c72b906fb4a6aa5d3df69 Mon Sep 17 00:00:00 2001
+From: Yaroslav Gurov <ygurov@proton.me>
+Date: Thu, 20 Nov 2025 15:28:36 +0100
+Subject: [PATCH 02/12] feat: added network stack tunneling to awg
+
+---
+ go.mod                       |   1 +
+ go.sum                       |   2 +
+ protocol/awg/endpoint.go     |  58 +++++++++++++-
+ transport/awg/device.go      |  45 ++++-------
+ transport/awg/tun.go         | 119 ++---------------------------
+ transport/awg/tun_network.go |  45 +++++++++++
+ transport/awg/tun_system.go  | 143 +++++++++++++++++++++++++++++++++++
+ 7 files changed, 268 insertions(+), 145 deletions(-)
+ create mode 100644 transport/awg/tun_network.go
+ create mode 100644 transport/awg/tun_system.go
+
+diff --git a/go.mod b/go.mod
+index 91a789c2..5037d547 100644
+--- a/go.mod
++++ b/go.mod
+@@ -134,5 +134,6 @@ require (
+ 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
+ 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250324211829-b45e905df463 // indirect
+ 	gopkg.in/yaml.v3 v3.0.1 // indirect
++	gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489 // indirect
+ 	lukechampine.com/blake3 v1.3.0 // indirect
+ )
+diff --git a/go.sum b/go.sum
+index 49f20985..63759b28 100644
+--- a/go.sum
++++ b/go.sum
+@@ -326,6 +326,8 @@ gopkg.in/yaml.v1 v1.0.0-20140924161607-9f9df34309c0/go.mod h1:WDnlLJ4WF5VGsH/HVa
+ gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
+ gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
+ gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
++gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489 h1:ze1vwAdliUAr68RQ5NtufWaXaOg8WUO2OACzEV+TNdE=
++gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489/go.mod h1:10sU+Uh5KKNv1+2x2A0Gvzt8FjD3ASIhorV3YsauXhk=
+ howett.net/plist v1.0.1 h1:37GdZ8tP09Q35o9ych3ehygcsL+HqKSwzctveSlarvM=
+ howett.net/plist v1.0.1/go.mod h1:lqaXoTrLY4hg8tnEzNru53gicrbv7rrk+2xJA/7hw9g=
+ lukechampine.com/blake3 v1.3.0 h1:sJ3XhFINmHSrYCgl958hscfIa3bw8x4DqMP3u1YvoYE=
+diff --git a/protocol/awg/endpoint.go b/protocol/awg/endpoint.go
+index 003495db..64bb8556 100644
+--- a/protocol/awg/endpoint.go
++++ b/protocol/awg/endpoint.go
+@@ -4,6 +4,7 @@ import (
+ 	"context"
+ 	"encoding/base64"
+ 	"encoding/hex"
++	"net"
+ 	"net/netip"
+ 
+ 	"github.com/sagernet/sing-box/adapter"
+@@ -13,8 +14,10 @@ import (
+ 	"github.com/sagernet/sing-box/log"
+ 	"github.com/sagernet/sing-box/option"
+ 	"github.com/sagernet/sing-box/transport/awg"
++	"github.com/sagernet/sing/common/bufio"
+ 	"github.com/sagernet/sing/common/format"
+-	"github.com/sagernet/sing/common/network"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
+ 
+ 	"go4.org/netipx"
+ )
+@@ -26,6 +29,10 @@ func RegisterEndpoint(registry *endpoint.Registry) {
+ type Endpoint struct {
+ 	*awg.Device
+ 	endpoint.Adapter
++	address   []netip.Prefix
++	router    adapter.Router
++	logger    log.ContextLogger
++	dnsRouter adapter.DNSRouter
+ }
+ 
+ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AwgEndpointOptions) (adapter.Endpoint, error) {
+@@ -84,7 +91,10 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 
+ 	return &Endpoint{
+ 		Device:  dev,
+-		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{network.NetworkTCP, network.NetworkUDP}, options.DialerOptions),
++		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
++		address: options.Address,
++		router:  router,
++		logger:  logger,
+ 	}, nil
+ }
+ 
+@@ -171,3 +181,47 @@ func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
+ 	}
+ 	return s, nil
+ }
++
++func (e *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
++	var metadata adapter.InboundContext
++	metadata.Inbound = e.Tag()
++	metadata.InboundType = e.Type()
++	metadata.Source = source
++	metadata.Destination = destination
++	for _, addr := range e.address {
++		if addr.Contains(destination.Addr) {
++			metadata.OriginDestination = destination
++			if destination.Addr.Is4() {
++				metadata.Destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
++			} else {
++				metadata.Destination.Addr = netip.IPv6Loopback()
++			}
++			conn = bufio.NewNATPacketConn(bufio.NewNetPacketConn(conn), metadata.OriginDestination, metadata.Destination)
++		}
++	}
++	e.logger.InfoContext(ctx, "inbound packet connection from ", source)
++	e.logger.InfoContext(ctx, "inbound packet connection to ", destination)
++	e.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
++}
++
++func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
++	var metadata adapter.InboundContext
++	metadata.Inbound = w.Tag()
++	metadata.InboundType = w.Type()
++	metadata.Source = source
++	for _, addr := range w.address {
++		if addr.Contains(destination.Addr) {
++			metadata.OriginDestination = destination
++			if destination.Addr.Is4() {
++				destination.Addr = netip.AddrFrom4([4]uint8{127, 0, 0, 1})
++			} else {
++				destination.Addr = netip.IPv6Loopback()
++			}
++			break
++		}
++	}
++	metadata.Destination = destination
++	w.logger.InfoContext(ctx, "inbound connection from ", source)
++	w.logger.InfoContext(ctx, "inbound connection to ", metadata.Destination)
++	w.router.RouteConnectionEx(ctx, conn, metadata, onClose)
++}
+diff --git a/transport/awg/device.go b/transport/awg/device.go
+index c30b7041..184acd54 100644
+--- a/transport/awg/device.go
++++ b/transport/awg/device.go
+@@ -10,13 +10,9 @@ import (
+ 	"github.com/amnezia-vpn/amneziawg-go/device"
+ 
+ 	"github.com/sagernet/sing-box/adapter"
+-	"github.com/sagernet/sing-box/common/dialer"
+-	"github.com/sagernet/sing-box/option"
+-	"github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/logger"
+ 	"github.com/sagernet/sing/common/metadata"
+ 	"github.com/sagernet/sing/common/network"
+-	"github.com/sagernet/sing/service"
+ )
+ 
+ type DeviceOpts struct {
+@@ -27,29 +23,19 @@ type DeviceOpts struct {
+ }
+ 
+ type Device struct {
+-	wgDevice  *device.Device
+-	tun       *tun_adapter
+-	tunDialer network.Dialer
++	awgDevice *device.Device
++	tun       tunAdapter
+ }
+ 
+ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, opts DeviceOpts) (*Device, error) {
+-	networkManager := service.FromContext[adapter.NetworkManager](ctx)
++	// tun, err := newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
++	// if err != nil {
++	// 	return nil, exceptions.Cause(err, "create tunnel")
++	// }
+ 
+-	tun, err := newTun(opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, networkManager, logger)
++	tun, err := newNetworkTun(opts.Address, opts.MTU)
+ 	if err != nil {
+-		return nil, exceptions.Cause(err, "create tunnel")
+-	}
+-
+-	tunName, err := tun.Name()
+-	if err != nil {
+-		return nil, exceptions.Cause(err, "get tunnel name")
+-	}
+-
+-	tunDialer, err := dialer.NewDefault(ctx, option.DialerOptions{
+-		BindInterface: tunName,
+-	})
+-	if err != nil {
+-		return nil, exceptions.Cause(err, "get in-tunnel dialer")
++		return nil, err
+ 	}
+ 
+ 	wgLogger := &device.Logger{
+@@ -62,9 +48,8 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
+ 	}
+ 
+ 	return &Device{
+-		wgDevice:  device.NewDevice(tun, newBind(dial), wgLogger),
++		awgDevice: device.NewDevice(tun, newBind(dial), wgLogger),
+ 		tun:       tun,
+-		tunDialer: tunDialer,
+ 	}, nil
+ }
+ 
+@@ -76,17 +61,17 @@ func (d *Device) Start(stage adapter.StartStage) error {
+ }
+ 
+ func (d *Device) Close() error {
+-	return d.tun.Close()
++	return d.awgDevice.Down()
+ }
+ 
+ func (d *Device) SetIpcConfig(s string) error {
+-	return d.wgDevice.IpcSet(s)
++	return d.awgDevice.IpcSet(s)
+ }
+ 
+-func (e *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
+-	return e.tunDialer.DialContext(ctx, network, destination)
++func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
++	return d.tun.DialContext(ctx, network, destination)
+ }
+ 
+-func (e *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
+-	return e.tunDialer.ListenPacket(ctx, destination)
++func (d *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
++	return d.tun.ListenPacket(ctx, destination)
+ }
+diff --git a/transport/awg/tun.go b/transport/awg/tun.go
+index 0cd86a34..a03c8455 100644
+--- a/transport/awg/tun.go
++++ b/transport/awg/tun.go
+@@ -1,120 +1,13 @@
+ package awg
+ 
+ import (
+-	"net/netip"
+-	"os"
+-
+-	wgTun "github.com/amnezia-vpn/amneziawg-go/tun"
++	awgTun "github.com/amnezia-vpn/amneziawg-go/tun"
+ 	"github.com/sagernet/sing-box/adapter"
+-	tun "github.com/sagernet/sing-tun"
+-	"github.com/sagernet/sing/common"
+-	"github.com/sagernet/sing/common/exceptions"
+-	"github.com/sagernet/sing/common/logger"
++	"github.com/sagernet/sing/common/network"
+ )
+ 
+-var _ wgTun.Device = (*tun_adapter)(nil)
+-var _ adapter.SimpleLifecycle = (*tun_adapter)(nil)
+-
+-type tun_adapter struct {
+-	mtu     uint32
+-	singtun tun.Tun
+-	events  chan wgTun.Event
+-	name    string
+-}
+-
+-func newTun(address []netip.Prefix, allowedIps []netip.Prefix, excludedIps []netip.Prefix, mtu uint32, networkManager adapter.NetworkManager, logger logger.Logger) (*tun_adapter, error) {
+-	events := make(chan wgTun.Event)
+-	name := tun.CalculateInterfaceName("")
+-
+-	singtun, err := tun.New(tun.Options{
+-		Name: name,
+-		GSO:  true,
+-		MTU:  uint32(mtu),
+-		Inet4Address: common.Filter(address, func(it netip.Prefix) bool {
+-			return it.Addr().Is4()
+-		}),
+-		Inet6Address: common.Filter(address, func(it netip.Prefix) bool {
+-			return it.Addr().Is6()
+-		}),
+-		InterfaceMonitor: networkManager.InterfaceMonitor(),
+-		InterfaceFinder:  networkManager.InterfaceFinder(),
+-		Inet4RouteAddress: common.Filter(allowedIps, func(it netip.Prefix) bool {
+-			return it.Addr().Is4()
+-		}),
+-		Inet6RouteAddress: common.Filter(allowedIps, func(it netip.Prefix) bool {
+-			return it.Addr().Is6()
+-		}),
+-		Inet4RouteExcludeAddress: common.Filter(excludedIps, func(it netip.Prefix) bool {
+-			return it.Addr().Is4()
+-		}),
+-		Inet6RouteExcludeAddress: common.Filter(excludedIps, func(it netip.Prefix) bool {
+-			return it.Addr().Is6()
+-		}),
+-		Logger: logger,
+-	})
+-	if err != nil {
+-		return nil, exceptions.Cause(err, "create tunnel")
+-	}
+-
+-	return &tun_adapter{
+-		mtu:     mtu,
+-		events:  events,
+-		singtun: singtun,
+-		name:    name,
+-	}, nil
+-}
+-
+-func (t *tun_adapter) Start() error {
+-	if err := t.singtun.Start(); err != nil {
+-		return exceptions.Cause(err, "start tunnel")
+-	}
+-
+-	t.events <- wgTun.EventUp
+-	return nil
+-}
+-
+-func (t *tun_adapter) File() *os.File {
+-	return nil
+-}
+-
+-func (t *tun_adapter) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+-	n, err := t.singtun.Read(bufs[0][offset-tun.PacketOffset:])
+-	if err != nil {
+-		return 0, err
+-	}
+-	sizes[0] = n
+-	return 1, nil
+-}
+-
+-func (t *tun_adapter) Write(bufs [][]byte, offset int) (int, error) {
+-	for _, buf := range bufs {
+-		common.ClearArray(buf[offset-tun.PacketOffset : offset])
+-		tun.PacketFillHeader(buf[offset-tun.PacketOffset:], tun.PacketIPVersion(buf[offset:]))
+-
+-		if _, err := t.singtun.Write(buf[offset-tun.PacketOffset:]); err != nil {
+-			return 0, err
+-		}
+-	}
+-	return len(bufs), nil
+-}
+-
+-func (t *tun_adapter) MTU() (int, error) {
+-	return int(t.mtu), nil
+-}
+-
+-func (t *tun_adapter) Name() (string, error) {
+-	return t.name, nil
+-}
+-
+-func (t *tun_adapter) Events() <-chan wgTun.Event {
+-	return t.events
+-}
+-
+-func (t *tun_adapter) Close() error {
+-	close(t.events)
+-	return nil
+-}
+-
+-func (t *tun_adapter) BatchSize() int {
+-	return 1
++type tunAdapter interface {
++	network.Dialer
++	awgTun.Device
++	adapter.SimpleLifecycle
+ }
+diff --git a/transport/awg/tun_network.go b/transport/awg/tun_network.go
+new file mode 100644
+index 00000000..e2cf8575
+--- /dev/null
++++ b/transport/awg/tun_network.go
+@@ -0,0 +1,45 @@
++package awg
++
++import (
++	"context"
++	"net"
++	"net/netip"
++
++	"github.com/amnezia-vpn/amneziawg-go/tun"
++	"github.com/amnezia-vpn/amneziawg-go/tun/netstack"
++	"github.com/sagernet/sing/common/metadata"
++)
++
++type networkTun struct {
++	tun.Device
++	conn *netstack.Net
++}
++
++func newNetworkTun(address []netip.Prefix, mtu uint32) (tunAdapter, error) {
++	var localAddresses []netip.Addr
++	for _, prefix := range address {
++		localAddresses = append(localAddresses, prefix.Addr())
++	}
++
++	tun, conn, err := netstack.CreateNetTUN(localAddresses, []netip.Addr{}, int(mtu))
++	if err != nil {
++		return nil, err
++	}
++
++	return &networkTun{
++		Device: tun,
++		conn:   conn,
++	}, nil
++}
++
++func (t *networkTun) Start() error {
++	return nil
++}
++
++func (t *networkTun) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
++	return t.conn.DialContext(ctx, network, destination.String())
++}
++
++func (t *networkTun) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
++	return t.conn.DialUDPAddrPort(netip.AddrPort{}, destination.AddrPort())
++}
+diff --git a/transport/awg/tun_system.go b/transport/awg/tun_system.go
+new file mode 100644
+index 00000000..c924d916
+--- /dev/null
++++ b/transport/awg/tun_system.go
+@@ -0,0 +1,143 @@
++package awg
++
++import (
++	"context"
++	"net"
++	"net/netip"
++	"os"
++
++	awgTun "github.com/amnezia-vpn/amneziawg-go/tun"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/dialer"
++	"github.com/sagernet/sing-box/option"
++	tun "github.com/sagernet/sing-tun"
++	"github.com/sagernet/sing/common"
++	"github.com/sagernet/sing/common/exceptions"
++	"github.com/sagernet/sing/common/logger"
++	"github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/common/network"
++	"github.com/sagernet/sing/service"
++)
++
++type systemTun struct {
++	mtu     uint32
++	singtun tun.Tun
++	events  chan awgTun.Event
++	name    string
++	dialer  network.Dialer
++}
++
++func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []netip.Prefix, excludedIps []netip.Prefix, mtu uint32, logger logger.Logger) (tunAdapter, error) {
++	networkManager := service.FromContext[adapter.NetworkManager](ctx)
++	name := tun.CalculateInterfaceName("")
++	events := make(chan awgTun.Event)
++
++	dial, err := dialer.NewDefault(ctx, option.DialerOptions{
++		BindInterface: name,
++	})
++	if err != nil {
++		return nil, exceptions.Cause(err, "get in-tunnel dialer")
++	}
++
++	singtun, err := tun.New(tun.Options{
++		Name: name,
++		GSO:  true,
++		MTU:  uint32(mtu),
++		Inet4Address: common.Filter(address, func(it netip.Prefix) bool {
++			return it.Addr().Is4()
++		}),
++		Inet6Address: common.Filter(address, func(it netip.Prefix) bool {
++			return it.Addr().Is6()
++		}),
++		InterfaceMonitor: networkManager.InterfaceMonitor(),
++		InterfaceFinder:  networkManager.InterfaceFinder(),
++		Inet4RouteAddress: common.Filter(allowedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is4()
++		}),
++		Inet6RouteAddress: common.Filter(allowedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is6()
++		}),
++		Inet4RouteExcludeAddress: common.Filter(excludedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is4()
++		}),
++		Inet6RouteExcludeAddress: common.Filter(excludedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is6()
++		}),
++		Logger: logger,
++	})
++	if err != nil {
++		return nil, exceptions.Cause(err, "create tunnel")
++	}
++
++	return &systemTun{
++		mtu:     mtu,
++		events:  events,
++		singtun: singtun,
++		name:    name,
++		dialer:  dial,
++	}, nil
++}
++
++func (t *systemTun) Start() error {
++	if err := t.singtun.Start(); err != nil {
++		return exceptions.Cause(err, "start tunnel")
++	}
++
++	t.events <- awgTun.EventUp
++	return nil
++}
++
++func (t *systemTun) File() *os.File {
++	return nil
++}
++
++func (t *systemTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
++	n, err := t.singtun.Read(bufs[0][offset-tun.PacketOffset:])
++	if err != nil {
++		return 0, err
++	}
++	sizes[0] = n
++	return 1, nil
++}
++
++func (t *systemTun) Write(bufs [][]byte, offset int) (int, error) {
++	for _, buf := range bufs {
++		common.ClearArray(buf[offset-tun.PacketOffset : offset])
++		tun.PacketFillHeader(buf[offset-tun.PacketOffset:], tun.PacketIPVersion(buf[offset:]))
++
++		if _, err := t.singtun.Write(buf[offset-tun.PacketOffset:]); err != nil {
++			return 0, err
++		}
++	}
++	return len(bufs), nil
++}
++
++func (t *systemTun) MTU() (int, error) {
++	return int(t.mtu), nil
++}
++
++func (t *systemTun) Name() (string, error) {
++	return t.name, nil
++}
++
++func (t *systemTun) Events() <-chan awgTun.Event {
++	return t.events
++}
++
++func (t *systemTun) Close() error {
++	close(t.events)
++	return nil
++}
++
++func (t *systemTun) BatchSize() int {
++	return 1
++}
++
++func (t *systemTun) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
++	return t.dialer.DialContext(ctx, network, destination)
++}
++
++func (t *systemTun) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
++	return t.dialer.ListenPacket(ctx, destination)
++}
+-- 
+2.52.0
+

@@ -1,0 +1,145 @@
+From 79488e584bcdf3edfdfdc7b5a216d3d444fa58d0 Mon Sep 17 00:00:00 2001
+From: Yaroslav Gurov <ygurov@proton.me>
+Date: Sun, 23 Nov 2025 19:01:48 +0100
+Subject: [PATCH 05/12] feat: added integrated tun feature
+
+---
+ option/awg.go            | 43 ++++++++++++++++++++--------------------
+ protocol/awg/endpoint.go |  9 +++++----
+ transport/awg/device.go  | 31 +++++++++++++++++++----------
+ 3 files changed, 47 insertions(+), 36 deletions(-)
+
+diff --git a/option/awg.go b/option/awg.go
+index 9469faf9..f367fd48 100644
+--- a/option/awg.go
++++ b/option/awg.go
+@@ -7,27 +7,28 @@ import (
+ )
+ 
+ type AwgEndpointOptions struct {
+-	PrivateKey string                           `json:"private_key"`
+-	Address    badoption.Listable[netip.Prefix] `json:"address"`
+-	MTU        uint32                           `json:"mtu,omitempty"`
+-	ListenPort uint16                           `json:"listen_port,omitempty"`
+-	Jc         int                              `json:"jc,omitempty"`
+-	Jmin       int                              `json:"jmin,omitempty"`
+-	Jmax       int                              `json:"jmax,omitempty"`
+-	S1         int                              `json:"s1,omitempty"`
+-	S2         int                              `json:"s2,omitempty"`
+-	S3         int                              `json:"s3,omitempty"`
+-	S4         int                              `json:"s4,omitempty"`
+-	H1         string                           `json:"h1,omitempty"`
+-	H2         string                           `json:"h2,omitempty"`
+-	H3         string                           `json:"h3,omitempty"`
+-	H4         string                           `json:"h4,omitempty"`
+-	I1         string                           `json:"i1,omitempty"`
+-	I2         string                           `json:"i2,omitempty"`
+-	I3         string                           `json:"i3,omitempty"`
+-	I4         string                           `json:"i4,omitempty"`
+-	I5         string                           `json:"i5,omitempty"`
+-	Peers      []AwgPeerOptions                 `json:"peers,omitempty"`
++	UseIntegratedTun bool                             `json:"useIntegratedTun"`
++	PrivateKey       string                           `json:"private_key"`
++	Address          badoption.Listable[netip.Prefix] `json:"address"`
++	MTU              uint32                           `json:"mtu,omitempty"`
++	ListenPort       uint16                           `json:"listen_port,omitempty"`
++	Jc               int                              `json:"jc,omitempty"`
++	Jmin             int                              `json:"jmin,omitempty"`
++	Jmax             int                              `json:"jmax,omitempty"`
++	S1               int                              `json:"s1,omitempty"`
++	S2               int                              `json:"s2,omitempty"`
++	S3               int                              `json:"s3,omitempty"`
++	S4               int                              `json:"s4,omitempty"`
++	H1               string                           `json:"h1,omitempty"`
++	H2               string                           `json:"h2,omitempty"`
++	H3               string                           `json:"h3,omitempty"`
++	H4               string                           `json:"h4,omitempty"`
++	I1               string                           `json:"i1,omitempty"`
++	I2               string                           `json:"i2,omitempty"`
++	I3               string                           `json:"i3,omitempty"`
++	I4               string                           `json:"i4,omitempty"`
++	I5               string                           `json:"i5,omitempty"`
++	Peers            []AwgPeerOptions                 `json:"peers,omitempty"`
+ 	DialerOptions
+ }
+ 
+diff --git a/protocol/awg/endpoint.go b/protocol/awg/endpoint.go
+index bd36a178..e898ee78 100644
+--- a/protocol/awg/endpoint.go
++++ b/protocol/awg/endpoint.go
+@@ -76,10 +76,11 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 	}
+ 
+ 	dev, err := awg.NewDevice(ctx, logger, dial, ipc, awg.DeviceOpts{
+-		Address:     options.Address,
+-		AllowedIps:  allowedIps.Prefixes(),
+-		ExcludedIps: excludedIps.Prefixes(),
+-		MTU:         options.MTU,
++		UseIntegratedTun: options.UseIntegratedTun,
++		Address:          options.Address,
++		AllowedIps:       allowedIps.Prefixes(),
++		ExcludedIps:      excludedIps.Prefixes(),
++		MTU:              options.MTU,
+ 	})
+ 	if err != nil {
+ 		return nil, err
+diff --git a/transport/awg/device.go b/transport/awg/device.go
+index d1c905a5..10b1c981 100644
+--- a/transport/awg/device.go
++++ b/transport/awg/device.go
+@@ -11,6 +11,7 @@ import (
+ 	"github.com/amnezia-vpn/amneziawg-go/device"
+ 
+ 	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing/common/exceptions"
+ 	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/logger"
+ 	"github.com/sagernet/sing/common/metadata"
+@@ -18,10 +19,11 @@ import (
+ )
+ 
+ type DeviceOpts struct {
+-	Address     []netip.Prefix
+-	AllowedIps  []netip.Prefix
+-	ExcludedIps []netip.Prefix
+-	MTU         uint32
++	UseIntegratedTun bool
++	Address          []netip.Prefix
++	AllowedIps       []netip.Prefix
++	ExcludedIps      []netip.Prefix
++	MTU              uint32
+ }
+ 
+ type Device struct {
+@@ -33,14 +35,21 @@ type Device struct {
+ }
+ 
+ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, ipcConfig string, opts DeviceOpts) (*Device, error) {
+-	// tun, err := newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
+-	// if err != nil {
+-	// 	return nil, exceptions.Cause(err, "create tunnel")
+-	// }
++	var (
++		tun tunAdapter
++		err error
++	)
+ 
+-	tun, err := newNetworkTun(opts.Address, opts.MTU)
+-	if err != nil {
+-		return nil, err
++	if opts.UseIntegratedTun {
++		tun, err = newSystemTun(ctx, opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, logger)
++		if err != nil {
++			return nil, exceptions.Cause(err, "create tunnel")
++		}
++	} else {
++		tun, err = newNetworkTun(opts.Address, opts.MTU)
++		if err != nil {
++			return nil, err
++		}
+ 	}
+ 
+ 	awgLogger := &device.Logger{
+-- 
+2.52.0
+

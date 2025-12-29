@@ -1,0 +1,817 @@
+From 01d75590796d98aa511e4fbacb242fb4221ec8e3 Mon Sep 17 00:00:00 2001
+From: Yaroslav Gurov <ygurov@proton.me>
+Date: Thu, 20 Nov 2025 03:25:16 +0100
+Subject: [PATCH 01/12] feat: integrate awg as an endpoint
+
+---
+ Makefile                 |   2 +-
+ constant/proxy.go        |   3 +
+ go.mod                   |   5 +-
+ go.sum                   |   6 ++
+ include/awg.go           |  12 +++
+ include/awg_stub.go      |  20 +++++
+ include/registry.go      |   3 +-
+ option/awg.go            |  41 +++++++++
+ protocol/awg/endpoint.go | 173 ++++++++++++++++++++++++++++++++++++++
+ transport/awg/bind.go    | 175 +++++++++++++++++++++++++++++++++++++++
+ transport/awg/device.go  |  92 ++++++++++++++++++++
+ transport/awg/tun.go     | 120 +++++++++++++++++++++++++++
+ 12 files changed, 649 insertions(+), 3 deletions(-)
+ create mode 100644 include/awg.go
+ create mode 100644 include/awg_stub.go
+ create mode 100644 option/awg.go
+ create mode 100644 protocol/awg/endpoint.go
+ create mode 100644 transport/awg/bind.go
+ create mode 100644 transport/awg/device.go
+ create mode 100644 transport/awg/tun.go
+
+diff --git a/Makefile b/Makefile
+index 0f78baaf..8951aaf6 100644
+--- a/Makefile
++++ b/Makefile
+@@ -1,6 +1,6 @@
+ NAME = sing-box
+ COMMIT = $(shell git rev-parse --short HEAD)
+-TAGS ?= with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale
++TAGS ?= with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_tailscale,with_awg
+ 
+ GOHOSTOS = $(shell go env GOHOSTOS)
+ GOHOSTARCH = $(shell go env GOHOSTARCH)
+diff --git a/constant/proxy.go b/constant/proxy.go
+index cf12c48d..66e6f1a0 100644
+--- a/constant/proxy.go
++++ b/constant/proxy.go
+@@ -28,6 +28,7 @@ const (
+ 	TypeDERP         = "derp"
+ 	TypeResolved     = "resolved"
+ 	TypeSSMAPI       = "ssm-api"
++	TypeAwg          = "awg"
+ )
+ 
+ const (
+@@ -87,6 +88,8 @@ func ProxyDisplayName(proxyType string) string {
+ 		return "Selector"
+ 	case TypeURLTest:
+ 		return "URLTest"
++	case TypeAwg:
++		return "Awg"
+ 	default:
+ 		return "Unknown"
+ 	}
+diff --git a/go.mod b/go.mod
+index bb72af34..91a789c2 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1,8 +1,9 @@
+ module github.com/sagernet/sing-box
+ 
+-go 1.23.1
++go 1.24.4
+ 
+ require (
++	github.com/amnezia-vpn/amneziawg-go v0.2.15
+ 	github.com/anytls/sing-anytls v0.0.11
+ 	github.com/caddyserver/certmagic v0.23.0
+ 	github.com/coder/websocket v1.8.13
+@@ -116,9 +117,11 @@ require (
+ 	github.com/tailscale/netlink v1.1.1-0.20240822203006-4d49adab4de7 // indirect
+ 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
+ 	github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 // indirect
++	github.com/tevino/abool v1.2.0 // indirect
+ 	github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 // indirect
+ 	github.com/x448/float16 v0.8.4 // indirect
+ 	github.com/zeebo/blake3 v0.2.4 // indirect
++	go.uber.org/atomic v1.11.0 // indirect
+ 	go.uber.org/multierr v1.11.0 // indirect
+ 	go.uber.org/zap/exp v0.3.0 // indirect
+ 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect
+diff --git a/go.sum b/go.sum
+index 707de11b..49f20985 100644
+--- a/go.sum
++++ b/go.sum
+@@ -6,6 +6,8 @@ github.com/akutz/memconn v0.1.0 h1:NawI0TORU4hcOMsMr11g7vwlCdkYeLKXBcxWu2W/P8A=
+ github.com/akutz/memconn v0.1.0/go.mod h1:Jo8rI7m0NieZyLI5e2CDlRdRqRRB4S7Xp77ukDjH+Fw=
+ github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa h1:LHTHcTQiSGT7VVbI0o4wBRNQIgn917usHWOd6VAffYI=
+ github.com/alexbrainman/sspi v0.0.0-20231016080023-1a75b4708caa/go.mod h1:cEWa1LVoE5KvSD9ONXsZrj0z6KqySlCCNKHlLzbqAt4=
++github.com/amnezia-vpn/amneziawg-go v0.2.15 h1:hQnFOJJHXrInorORe3JJwiAD55m1an81EGSW3AdbT74=
++github.com/amnezia-vpn/amneziawg-go v0.2.15/go.mod h1:nRkPpIzjCxMW8pZKXTRkpqAQVlmFJdVOGkeQSC7wbms=
+ github.com/andybalholm/brotli v1.1.0 h1:eLKJA0d02Lf0mVpIDgYnqXcUn0GqVmEFny3VuID1U3M=
+ github.com/andybalholm/brotli v1.1.0/go.mod h1:sms7XGricyQI9K10gOSf56VKKWS4oLer58Q+mhRPtnY=
+ github.com/anytls/sing-anytls v0.0.11 h1:w8e9Uj1oP3m4zxkyZDewPk0EcQbvVxb7Nn+rapEx4fc=
+@@ -224,6 +226,8 @@ github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 h1:U
+ github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976/go.mod h1:agQPE6y6ldqCOui2gkIh7ZMztTkIQKH049tv8siLuNQ=
+ github.com/tc-hib/winres v0.2.1 h1:YDE0FiP0VmtRaDn7+aaChp1KiF4owBiJa5l964l5ujA=
+ github.com/tc-hib/winres v0.2.1/go.mod h1:C/JaNhH3KBvhNKVbvdlDWkbMDO9H4fKKDaN7/07SSuk=
++github.com/tevino/abool v1.2.0 h1:heAkClL8H6w+mK5md9dzsuohKeXHUpY7Vw0ZCKW+huA=
++github.com/tevino/abool v1.2.0/go.mod h1:qc66Pna1RiIsPa7O4Egxxs9OqkuxDX55zznh9K07Tzg=
+ github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701 h1:pyC9PaHYZFgEKFdlp3G8RaCKgVpHZnecvArXvPXcFkM=
+ github.com/u-root/uio v0.0.0-20240224005618-d2acac8f3701/go.mod h1:P3a5rG4X7tI17Nn3aOIAYr5HbIMukwXG0urG0WuL8OA=
+ github.com/vishvananda/netns v0.0.0-20200728191858-db3c7e526aae/go.mod h1:DD4vA1DwXk04H54A1oHXtwZmA0grkVMdPxx/VGLCah0=
+@@ -249,6 +253,8 @@ go.opentelemetry.io/otel/sdk/metric v1.35.0 h1:1RriWBmCKgkeHEhM7a2uMjMUfP7MsOF5J
+ go.opentelemetry.io/otel/sdk/metric v1.35.0/go.mod h1:is6XYCUMpcKi+ZsOvfluY5YstFnhW0BidkR+gL+qN+w=
+ go.opentelemetry.io/otel/trace v1.35.0 h1:dPpEfJu1sDIqruz7BHFG3c7528f6ddfSWfFDVt/xgMs=
+ go.opentelemetry.io/otel/trace v1.35.0/go.mod h1:WUk7DtFp1Aw2MkvqGdwiXYDZZNvA/1J8o6xRXLrIkyc=
++go.uber.org/atomic v1.11.0 h1:ZvwS0R+56ePWxUNi+Atn9dWONBPp/AUETXlHW0DxSjE=
++go.uber.org/atomic v1.11.0/go.mod h1:LUxbIzbOniOlMKjJjyPfpl4v+PKK2cNJn91OQbhoJI0=
+ go.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=
+ go.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=
+ go.uber.org/multierr v1.11.0 h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=
+diff --git a/include/awg.go b/include/awg.go
+new file mode 100644
+index 00000000..9e37665c
+--- /dev/null
++++ b/include/awg.go
+@@ -0,0 +1,12 @@
++//go:build with_awg
++
++package include
++
++import (
++	"github.com/sagernet/sing-box/adapter/endpoint"
++	"github.com/sagernet/sing-box/protocol/awg"
++)
++
++func registerAwgEndpoint(registry *endpoint.Registry) {
++	awg.RegisterEndpoint(registry)
++}
+diff --git a/include/awg_stub.go b/include/awg_stub.go
+new file mode 100644
+index 00000000..8c24fc6f
+--- /dev/null
++++ b/include/awg_stub.go
+@@ -0,0 +1,20 @@
++//go:build !with_awg
++
++package include
++
++import (
++	"context"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/adapter/endpoint"
++	C "github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	E "github.com/sagernet/sing/common/exceptions"
++)
++
++func registerAwgEndpoint(registry *endpoint.Registry) {
++	endpoint.Register(registry, C.TypeAwg, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AwgEndpointOptions) (adapter.Endpoint, error) {
++		return nil, E.New(`Awg is not included in this build, rebuild with -tags with_awg`)
++	})
++}
+diff --git a/include/registry.go b/include/registry.go
+index 94d56db1..027da26d 100644
+--- a/include/registry.go
++++ b/include/registry.go
+@@ -3,7 +3,7 @@ package include
+ import (
+ 	"context"
+ 
+-	"github.com/sagernet/sing-box"
++	box "github.com/sagernet/sing-box"
+ 	"github.com/sagernet/sing-box/adapter"
+ 	"github.com/sagernet/sing-box/adapter/endpoint"
+ 	"github.com/sagernet/sing-box/adapter/inbound"
+@@ -104,6 +104,7 @@ func EndpointRegistry() *endpoint.Registry {
+ 
+ 	registerWireGuardEndpoint(registry)
+ 	registerTailscaleEndpoint(registry)
++	registerAwgEndpoint(registry)
+ 
+ 	return registry
+ }
+diff --git a/option/awg.go b/option/awg.go
+new file mode 100644
+index 00000000..9469faf9
+--- /dev/null
++++ b/option/awg.go
+@@ -0,0 +1,41 @@
++package option
++
++import (
++	"net/netip"
++
++	"github.com/sagernet/sing/common/json/badoption"
++)
++
++type AwgEndpointOptions struct {
++	PrivateKey string                           `json:"private_key"`
++	Address    badoption.Listable[netip.Prefix] `json:"address"`
++	MTU        uint32                           `json:"mtu,omitempty"`
++	ListenPort uint16                           `json:"listen_port,omitempty"`
++	Jc         int                              `json:"jc,omitempty"`
++	Jmin       int                              `json:"jmin,omitempty"`
++	Jmax       int                              `json:"jmax,omitempty"`
++	S1         int                              `json:"s1,omitempty"`
++	S2         int                              `json:"s2,omitempty"`
++	S3         int                              `json:"s3,omitempty"`
++	S4         int                              `json:"s4,omitempty"`
++	H1         string                           `json:"h1,omitempty"`
++	H2         string                           `json:"h2,omitempty"`
++	H3         string                           `json:"h3,omitempty"`
++	H4         string                           `json:"h4,omitempty"`
++	I1         string                           `json:"i1,omitempty"`
++	I2         string                           `json:"i2,omitempty"`
++	I3         string                           `json:"i3,omitempty"`
++	I4         string                           `json:"i4,omitempty"`
++	I5         string                           `json:"i5,omitempty"`
++	Peers      []AwgPeerOptions                 `json:"peers,omitempty"`
++	DialerOptions
++}
++
++type AwgPeerOptions struct {
++	Address                     string                           `json:"address,omitempty"`
++	Port                        uint16                           `json:"port,omitempty"`
++	PublicKey                   string                           `json:"public_key,omitempty"`
++	PresharedKey                string                           `json:"preshared_key,omitempty"`
++	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
++	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
++}
+diff --git a/protocol/awg/endpoint.go b/protocol/awg/endpoint.go
+new file mode 100644
+index 00000000..003495db
+--- /dev/null
++++ b/protocol/awg/endpoint.go
+@@ -0,0 +1,173 @@
++package awg
++
++import (
++	"context"
++	"encoding/base64"
++	"encoding/hex"
++	"net/netip"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/adapter/endpoint"
++	"github.com/sagernet/sing-box/common/dialer"
++	"github.com/sagernet/sing-box/constant"
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing-box/transport/awg"
++	"github.com/sagernet/sing/common/format"
++	"github.com/sagernet/sing/common/network"
++
++	"go4.org/netipx"
++)
++
++func RegisterEndpoint(registry *endpoint.Registry) {
++	endpoint.Register(registry, constant.TypeAwg, NewEndpoint)
++}
++
++type Endpoint struct {
++	*awg.Device
++	endpoint.Adapter
++}
++
++func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.AwgEndpointOptions) (adapter.Endpoint, error) {
++	if options.MTU == 0 {
++		options.MTU = 1408
++	}
++
++	dial, err := dialer.NewWithOptions(dialer.Options{
++		Context:          ctx,
++		Options:          options.DialerOptions,
++		RemoteIsDomain:   false,
++		ResolverOnDetour: true,
++	})
++	if err != nil {
++		return nil, err
++	}
++
++	var allowedPrefixBuilder netipx.IPSetBuilder
++	var excludedPrefixBuilder netipx.IPSetBuilder
++	for _, peer := range options.Peers {
++		for _, prefix := range peer.AllowedIPs {
++			allowedPrefixBuilder.AddPrefix(prefix)
++		}
++
++		if addr, err := netip.ParseAddr(peer.Address); err == nil {
++			excludedPrefixBuilder.Add(addr)
++		}
++	}
++	allowedIps, err := allowedPrefixBuilder.IPSet()
++	if err != nil {
++		return nil, err
++	}
++	excludedIps, err := excludedPrefixBuilder.IPSet()
++	if err != nil {
++		return nil, err
++	}
++
++	ipc, err := genIpcConfig(options)
++	if err != nil {
++		return nil, err
++	}
++
++	dev, err := awg.NewDevice(ctx, logger, dial, awg.DeviceOpts{
++		Address:     options.Address,
++		AllowedIps:  allowedIps.Prefixes(),
++		ExcludedIps: excludedIps.Prefixes(),
++		MTU:         options.MTU,
++	})
++	if err != nil {
++		return nil, err
++	}
++
++	if err = dev.SetIpcConfig(ipc); err != nil {
++		return nil, err
++	}
++
++	return &Endpoint{
++		Device:  dev,
++		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{network.NetworkTCP, network.NetworkUDP}, options.DialerOptions),
++	}, nil
++}
++
++func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
++	privateKeyBytes, err := base64.StdEncoding.DecodeString(opts.PrivateKey)
++	if err != nil {
++		return "", err
++	}
++	s := "private_key=" + hex.EncodeToString(privateKeyBytes)
++	if opts.ListenPort != 0 {
++		s += "\nlisten_port=" + format.ToString(opts.ListenPort)
++	}
++	if opts.Jc != 0 {
++		s += "\njc=" + format.ToString(opts.Jc)
++	}
++	if opts.Jmin != 0 {
++		s += "\njmin=" + format.ToString(opts.Jmin)
++	}
++	if opts.Jmax != 0 {
++		s += "\njmax=" + format.ToString(opts.Jmax)
++	}
++	if opts.S1 != 0 {
++		s += "\ns1=" + format.ToString(opts.S1)
++	}
++	if opts.S2 != 0 {
++		s += "\ns2=" + format.ToString(opts.S2)
++	}
++	if opts.S3 != 0 {
++		s += "\ns3=" + format.ToString(opts.S3)
++	}
++	if opts.S4 != 0 {
++		s += "\ns4=" + format.ToString(opts.S4)
++	}
++	if opts.H1 != "" {
++		s += "\nh1=" + opts.H1
++	}
++	if opts.H2 != "" {
++		s += "\nh2=" + opts.H2
++	}
++	if opts.H3 != "" {
++		s += "\nh3=" + opts.H3
++	}
++	if opts.H4 != "" {
++		s += "\nh4=" + opts.H4
++	}
++	if opts.I1 != "" {
++		s += "\ni1=" + opts.I1
++	}
++	if opts.I2 != "" {
++		s += "\ni2=" + opts.I2
++	}
++	if opts.I3 != "" {
++		s += "\ni3=" + opts.I3
++	}
++	if opts.I4 != "" {
++		s += "\ni4=" + opts.I4
++	}
++	if opts.I5 != "" {
++		s += "\ni5=" + opts.I5
++	}
++
++	for _, peer := range opts.Peers {
++		publicKeyBytes, err := base64.StdEncoding.DecodeString(peer.PublicKey)
++		if err != nil {
++			return "", err
++		}
++		s += "\npublic_key=" + hex.EncodeToString(publicKeyBytes)
++		if peer.PresharedKey != "" {
++			presharedKeyBytes, err := base64.StdEncoding.DecodeString(peer.PresharedKey)
++			if err != nil {
++				return "", err
++			}
++			s += "\npreshared_key=" + hex.EncodeToString(presharedKeyBytes)
++		}
++		if peer.Address != "" && peer.Port != 0 {
++			s += "\nendpoint=" + peer.Address + ":" + format.ToString(peer.Port)
++		}
++		if peer.PersistentKeepaliveInterval != 0 {
++			s += "\npersistent_keepalive_interval=" + format.ToString(peer.PersistentKeepaliveInterval)
++		}
++		for _, allowedIp := range peer.AllowedIPs {
++			s += "\nallowed_ip=" + allowedIp.String()
++		}
++	}
++	return s, nil
++}
+diff --git a/transport/awg/bind.go b/transport/awg/bind.go
+new file mode 100644
+index 00000000..2f14f02d
+--- /dev/null
++++ b/transport/awg/bind.go
+@@ -0,0 +1,175 @@
++package awg
++
++import (
++	"context"
++	"errors"
++	"net"
++	"net/netip"
++	"sync"
++	"syscall"
++
++	"github.com/amnezia-vpn/amneziawg-go/conn"
++	"github.com/sagernet/sing/common/exceptions"
++	"github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/common/network"
++)
++
++var _ conn.Bind = (*bind_adapter)(nil)
++
++type bind_adapter struct {
++	conn4  *net.UDPConn
++	conn6  *net.UDPConn
++	dialer network.Dialer
++	ctx    context.Context
++	mutex  sync.Mutex
++}
++
++func newBind(dial network.Dialer) conn.Bind {
++	return &bind_adapter{
++		dialer: dial,
++	}
++}
++
++func (b *bind_adapter) connect(addr netip.Addr, port uint16) (*net.UDPConn, error) {
++	conn, err := b.dialer.ListenPacket(b.ctx, metadata.Socksaddr{Addr: addr, Port: port})
++	if err != nil {
++		return nil, err
++	}
++
++	udpConn, ok := conn.(*net.UDPConn)
++	if !ok {
++		conn.Close()
++		return nil, errors.ErrUnsupported
++	}
++
++	return udpConn, nil
++}
++
++func (*bind_adapter) receive(c *net.UDPConn) conn.ReceiveFunc {
++	return func(packets [][]byte, sizes []int, eps []conn.Endpoint) (n int, err error) {
++		n, peerAp, err := c.ReadFromUDPAddrPort(packets[0])
++		if err != nil {
++			return 0, err
++		}
++		sizes[0] = n
++		eps[0] = &bind_endpoint{AddrPort: peerAp}
++		return 1, nil
++	}
++}
++
++func (b *bind_adapter) Open(port uint16) (fns []conn.ReceiveFunc, actualPort uint16, err error) {
++	b.mutex.Lock()
++	defer b.mutex.Unlock()
++
++	if b.conn4 != nil || b.conn6 != nil {
++		return nil, 0, conn.ErrBindAlreadyOpen
++	}
++
++	conn4, err := b.connect(netip.IPv4Unspecified(), port)
++	if err != nil && !errors.Is(err, syscall.EAFNOSUPPORT) {
++		return nil, 0, exceptions.Cause(err, "create ipv4 connection")
++	}
++	if conn4 != nil {
++		fns = append(fns, b.receive(conn4))
++	}
++
++	conn6, err := b.connect(netip.IPv6Unspecified(), port)
++	if err != nil && !errors.Is(err, syscall.EAFNOSUPPORT) {
++		return nil, 0, exceptions.Cause(err, "create ipv6 connection")
++	}
++	if conn6 != nil {
++		fns = append(fns, b.receive(conn6))
++	}
++
++	b.conn4 = conn4
++	b.conn6 = conn6
++
++	return fns, port, nil
++}
++
++func (b *bind_adapter) Close() error {
++	b.mutex.Lock()
++	defer b.mutex.Unlock()
++
++	var err4, err6 error
++
++	if b.conn4 != nil {
++		err4 = b.conn4.Close()
++		b.conn4 = nil
++	}
++
++	if b.conn6 != nil {
++		err6 = b.conn6.Close()
++		b.conn6 = nil
++	}
++
++	return errors.Join(err4, err6)
++}
++
++func (b *bind_adapter) SetMark(mark uint32) error {
++	return nil
++}
++
++func (b *bind_adapter) Send(bufs [][]byte, ep conn.Endpoint) error {
++	var conn *net.UDPConn
++	if ep.DstIP().Is6() {
++		conn = b.conn6
++	} else {
++		conn = b.conn4
++	}
++
++	udpEp, ok := ep.(*bind_endpoint)
++	if !ok {
++		return errors.ErrUnsupported
++	}
++
++	for _, buf := range bufs {
++		if _, err := conn.WriteToUDPAddrPort(buf, udpEp.AddrPort); err != nil {
++			return err
++		}
++	}
++
++	return nil
++}
++
++func (b *bind_adapter) ParseEndpoint(s string) (conn.Endpoint, error) {
++	ap, err := netip.ParseAddrPort(s)
++	if err != nil {
++		return nil, err
++	}
++	return &bind_endpoint{AddrPort: ap}, nil
++}
++
++func (b *bind_adapter) BatchSize() int {
++	return 1
++}
++
++var _ conn.Endpoint = (*bind_endpoint)(nil)
++
++type bind_endpoint struct {
++	AddrPort netip.AddrPort
++}
++
++func (e bind_endpoint) ClearSrc() {
++}
++
++func (e bind_endpoint) SrcToString() string {
++	return ""
++}
++
++func (e bind_endpoint) DstToString() string {
++	return e.AddrPort.String()
++}
++
++func (e bind_endpoint) DstToBytes() []byte {
++	b, _ := e.AddrPort.MarshalBinary()
++	return b
++}
++
++func (e bind_endpoint) DstIP() netip.Addr {
++	return e.AddrPort.Addr()
++}
++
++func (e bind_endpoint) SrcIP() netip.Addr {
++	return netip.Addr{}
++}
+diff --git a/transport/awg/device.go b/transport/awg/device.go
+new file mode 100644
+index 00000000..c30b7041
+--- /dev/null
++++ b/transport/awg/device.go
+@@ -0,0 +1,92 @@
++package awg
++
++import (
++	"context"
++	"fmt"
++	"net"
++	"net/netip"
++	"strings"
++
++	"github.com/amnezia-vpn/amneziawg-go/device"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/dialer"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/exceptions"
++	"github.com/sagernet/sing/common/logger"
++	"github.com/sagernet/sing/common/metadata"
++	"github.com/sagernet/sing/common/network"
++	"github.com/sagernet/sing/service"
++)
++
++type DeviceOpts struct {
++	Address     []netip.Prefix
++	AllowedIps  []netip.Prefix
++	ExcludedIps []netip.Prefix
++	MTU         uint32
++}
++
++type Device struct {
++	wgDevice  *device.Device
++	tun       *tun_adapter
++	tunDialer network.Dialer
++}
++
++func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Dialer, opts DeviceOpts) (*Device, error) {
++	networkManager := service.FromContext[adapter.NetworkManager](ctx)
++
++	tun, err := newTun(opts.Address, opts.AllowedIps, opts.ExcludedIps, opts.MTU, networkManager, logger)
++	if err != nil {
++		return nil, exceptions.Cause(err, "create tunnel")
++	}
++
++	tunName, err := tun.Name()
++	if err != nil {
++		return nil, exceptions.Cause(err, "get tunnel name")
++	}
++
++	tunDialer, err := dialer.NewDefault(ctx, option.DialerOptions{
++		BindInterface: tunName,
++	})
++	if err != nil {
++		return nil, exceptions.Cause(err, "get in-tunnel dialer")
++	}
++
++	wgLogger := &device.Logger{
++		Verbosef: func(format string, args ...interface{}) {
++			logger.Debug(fmt.Sprintf(strings.ToLower(format), args...))
++		},
++		Errorf: func(format string, args ...interface{}) {
++			logger.Error(fmt.Sprintf(strings.ToLower(format), args...))
++		},
++	}
++
++	return &Device{
++		wgDevice:  device.NewDevice(tun, newBind(dial), wgLogger),
++		tun:       tun,
++		tunDialer: tunDialer,
++	}, nil
++}
++
++func (d *Device) Start(stage adapter.StartStage) error {
++	if stage != adapter.StartStateStart {
++		return nil
++	}
++	return d.tun.Start()
++}
++
++func (d *Device) Close() error {
++	return d.tun.Close()
++}
++
++func (d *Device) SetIpcConfig(s string) error {
++	return d.wgDevice.IpcSet(s)
++}
++
++func (e *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
++	return e.tunDialer.DialContext(ctx, network, destination)
++}
++
++func (e *Device) ListenPacket(ctx context.Context, destination metadata.Socksaddr) (net.PacketConn, error) {
++	return e.tunDialer.ListenPacket(ctx, destination)
++}
+diff --git a/transport/awg/tun.go b/transport/awg/tun.go
+new file mode 100644
+index 00000000..0cd86a34
+--- /dev/null
++++ b/transport/awg/tun.go
+@@ -0,0 +1,120 @@
++package awg
++
++import (
++	"net/netip"
++	"os"
++
++	wgTun "github.com/amnezia-vpn/amneziawg-go/tun"
++	"github.com/sagernet/sing-box/adapter"
++	tun "github.com/sagernet/sing-tun"
++	"github.com/sagernet/sing/common"
++	"github.com/sagernet/sing/common/exceptions"
++	"github.com/sagernet/sing/common/logger"
++)
++
++var _ wgTun.Device = (*tun_adapter)(nil)
++var _ adapter.SimpleLifecycle = (*tun_adapter)(nil)
++
++type tun_adapter struct {
++	mtu     uint32
++	singtun tun.Tun
++	events  chan wgTun.Event
++	name    string
++}
++
++func newTun(address []netip.Prefix, allowedIps []netip.Prefix, excludedIps []netip.Prefix, mtu uint32, networkManager adapter.NetworkManager, logger logger.Logger) (*tun_adapter, error) {
++	events := make(chan wgTun.Event)
++	name := tun.CalculateInterfaceName("")
++
++	singtun, err := tun.New(tun.Options{
++		Name: name,
++		GSO:  true,
++		MTU:  uint32(mtu),
++		Inet4Address: common.Filter(address, func(it netip.Prefix) bool {
++			return it.Addr().Is4()
++		}),
++		Inet6Address: common.Filter(address, func(it netip.Prefix) bool {
++			return it.Addr().Is6()
++		}),
++		InterfaceMonitor: networkManager.InterfaceMonitor(),
++		InterfaceFinder:  networkManager.InterfaceFinder(),
++		Inet4RouteAddress: common.Filter(allowedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is4()
++		}),
++		Inet6RouteAddress: common.Filter(allowedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is6()
++		}),
++		Inet4RouteExcludeAddress: common.Filter(excludedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is4()
++		}),
++		Inet6RouteExcludeAddress: common.Filter(excludedIps, func(it netip.Prefix) bool {
++			return it.Addr().Is6()
++		}),
++		Logger: logger,
++	})
++	if err != nil {
++		return nil, exceptions.Cause(err, "create tunnel")
++	}
++
++	return &tun_adapter{
++		mtu:     mtu,
++		events:  events,
++		singtun: singtun,
++		name:    name,
++	}, nil
++}
++
++func (t *tun_adapter) Start() error {
++	if err := t.singtun.Start(); err != nil {
++		return exceptions.Cause(err, "start tunnel")
++	}
++
++	t.events <- wgTun.EventUp
++	return nil
++}
++
++func (t *tun_adapter) File() *os.File {
++	return nil
++}
++
++func (t *tun_adapter) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
++	n, err := t.singtun.Read(bufs[0][offset-tun.PacketOffset:])
++	if err != nil {
++		return 0, err
++	}
++	sizes[0] = n
++	return 1, nil
++}
++
++func (t *tun_adapter) Write(bufs [][]byte, offset int) (int, error) {
++	for _, buf := range bufs {
++		common.ClearArray(buf[offset-tun.PacketOffset : offset])
++		tun.PacketFillHeader(buf[offset-tun.PacketOffset:], tun.PacketIPVersion(buf[offset:]))
++
++		if _, err := t.singtun.Write(buf[offset-tun.PacketOffset:]); err != nil {
++			return 0, err
++		}
++	}
++	return len(bufs), nil
++}
++
++func (t *tun_adapter) MTU() (int, error) {
++	return int(t.mtu), nil
++}
++
++func (t *tun_adapter) Name() (string, error) {
++	return t.name, nil
++}
++
++func (t *tun_adapter) Events() <-chan wgTun.Event {
++	return t.events
++}
++
++func (t *tun_adapter) Close() error {
++	close(t.events)
++	return nil
++}
++
++func (t *tun_adapter) BatchSize() int {
++	return 1
++}
+-- 
+2.52.0
+

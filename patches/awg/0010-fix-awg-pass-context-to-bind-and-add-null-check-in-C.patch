@@ -1,0 +1,77 @@
+From cf2e82e2d4b7e52a645e0a7764abb9ecb1e9b892 Mon Sep 17 00:00:00 2001
+From: hoaxisr <avs@rusimp.com>
+Date: Mon, 29 Dec 2025 11:19:36 +0000
+Subject: [PATCH 10/12] fix(awg): pass context to bind and add null-check in
+ Close
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Pass context.Context to newBind() for proper cancellation support
+- Add null-check for awgDevice in Close() to prevent panic
+- Add replace directive for local amneziawg-go development
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+---
+ go.mod                  | 2 ++
+ transport/awg/bind.go   | 3 ++-
+ transport/awg/device.go | 6 ++++--
+ 3 files changed, 8 insertions(+), 3 deletions(-)
+
+diff --git a/go.mod b/go.mod
+index 5037d547..05241053 100644
+--- a/go.mod
++++ b/go.mod
+@@ -58,6 +58,8 @@ require (
+ 
+ //replace github.com/sagernet/sing => ../sing
+ 
++replace github.com/amnezia-vpn/amneziawg-go => ../amneziawg-go
++
+ require (
+ 	filippo.io/edwards25519 v1.1.0 // indirect
+ 	github.com/ajg/form v1.5.1 // indirect
+diff --git a/transport/awg/bind.go b/transport/awg/bind.go
+index f5993fad..8c8ae68e 100644
+--- a/transport/awg/bind.go
++++ b/transport/awg/bind.go
+@@ -24,8 +24,9 @@ type bind_adapter struct {
+ 	mutex  sync.Mutex
+ }
+ 
+-func newBind(dial N.Dialer) conn.Bind {
++func newBind(ctx context.Context, dial N.Dialer) conn.Bind {
+ 	return &bind_adapter{
++		ctx:    ctx,
+ 		dialer: dial,
+ 	}
+ }
+diff --git a/transport/awg/device.go b/transport/awg/device.go
+index 10b1c981..476a6ab5 100644
+--- a/transport/awg/device.go
++++ b/transport/awg/device.go
+@@ -63,7 +63,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
+ 
+ 	return &Device{
+ 		tun:       tun,
+-		bind:      newBind(dial),
++		bind:      newBind(ctx, dial),
+ 		logger:    awgLogger,
+ 		ipcConfig: ipcConfig,
+ 	}, nil
+@@ -87,7 +87,9 @@ func (d *Device) Start(stage adapter.StartStage) error {
+ }
+ 
+ func (d *Device) Close() error {
+-	d.awgDevice.Close()
++	if d.awgDevice != nil {
++		d.awgDevice.Close()
++	}
+ 	return nil
+ }
+ 
+-- 
+2.52.0
+

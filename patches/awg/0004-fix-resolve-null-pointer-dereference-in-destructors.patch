@@ -1,0 +1,26 @@
+From ed51d5994507ad4e6ebaf869166977f852b920f7 Mon Sep 17 00:00:00 2001
+From: Yaroslav Gurov <ygurov@proton.me>
+Date: Fri, 21 Nov 2025 01:48:50 +0100
+Subject: [PATCH 04/12] fix: resolve null pointer dereference in destructors
+
+---
+ transport/awg/device.go | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/transport/awg/device.go b/transport/awg/device.go
+index db6971ae..d1c905a5 100644
+--- a/transport/awg/device.go
++++ b/transport/awg/device.go
+@@ -78,7 +78,8 @@ func (d *Device) Start(stage adapter.StartStage) error {
+ }
+ 
+ func (d *Device) Close() error {
+-	return d.awgDevice.Down()
++	d.awgDevice.Close()
++	return nil
+ }
+ 
+ func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
+-- 
+2.52.0
+

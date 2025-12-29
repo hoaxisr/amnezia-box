@@ -1,0 +1,328 @@
+From a81817bd44d7cf05ef84dfdde0555e1b2a012a5a Mon Sep 17 00:00:00 2001
+From: hoaxisr <avs@rusimp.com>
+Date: Wed, 17 Dec 2025 22:09:05 +0300
+Subject: [PATCH 08/12] fix(awg): add DNS resolution for AWG endpoint
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+AWG endpoint was failing to resolve domain names when used with FakeIP
+or standard DNS routing. The embedded awg.Device's DialContext did not
+handle FQDN destinations, causing "cannot marshal DNS message" errors.
+
+Changes:
+- Initialize dnsRouter from context in NewEndpoint
+- Add DialContext method that resolves domains via dnsRouter.Lookup()
+- Add ListenPacket method with same domain resolution logic
+- Add debug logging for IPC config
+
+This aligns AWG endpoint behavior with the standard WireGuard endpoint
+implementation which properly handles domain resolution.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+---
+ AWG_FIX.md               | 204 +++++++++++++++++++++++++++++++++++++++
+ protocol/awg/endpoint.go |  50 +++++++++-
+ 2 files changed, 249 insertions(+), 5 deletions(-)
+ create mode 100644 AWG_FIX.md
+
+diff --git a/AWG_FIX.md b/AWG_FIX.md
+new file mode 100644
+index 00000000..fbb1b4d9
+--- /dev/null
++++ b/AWG_FIX.md
+@@ -0,0 +1,204 @@
++# AmneziaWG Endpoint DNS Resolution Fix
++
++## Problem
++
++The AWG (AmneziaWG) endpoint implementation in `protocol/awg/endpoint.go` did not properly handle domain name resolution when used with sing-box's FakeIP or standard DNS routing.
++
++### Symptoms
++
++1. **FakeIP not working with AWG endpoint**
++   - When traffic was routed through `awg-ep`, FakeIP addresses (198.18.x.x) were not being resolved back to real IPs
++   - Error: `cannot marshal DNS message`
++
++2. **Domain resolution failing inside netstack**
++   - AWG endpoint using `useIntegratedTun: false` (netstack mode) could not resolve domain names
++   - Connections to IP addresses worked, but connections to domains failed
++
++3. **Latency tests failing**
++   - Clash API delay tests returned errors
++   - SOCKS5 connections to domains failed with error code (1)
++
++### Root Cause
++
++The AWG endpoint struct embedded `*awg.Device`:
++
++```go
++type Endpoint struct {
++    *awg.Device  // ← Embedded, provides DialContext/ListenPacket
++    // ...
++}
++```
++
++This caused `Endpoint.DialContext()` to inherit from `awg.Device.DialContext()`, which:
++1. Did not check if destination was a domain (FQDN)
++2. Passed domains directly to netstack's dial function
++3. Netstack attempted internal DNS resolution and failed
++
++Meanwhile, the standard WireGuard endpoint (`protocol/wireguard/endpoint.go`) properly handles this:
++
++```go
++func (w *Endpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
++    if destination.IsFqdn() {
++        destinationAddresses, err := w.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
++        // ... resolve and dial
++    }
++    return w.endpoint.DialContext(ctx, network, destination)
++}
++```
++
++## Solution
++
++### Changes Made
++
++**File: `protocol/awg/endpoint.go`**
++
++1. **Added imports:**
++```go
++E "github.com/sagernet/sing/common/exceptions"
++"github.com/sagernet/sing/service"
++```
++
++2. **Initialize dnsRouter in constructor:**
++```go
++return &Endpoint{
++    Device:    dev,
++    Adapter:   endpoint.NewAdapterWithDialerOptions(...),
++    address:   options.Address,
++    router:    router,
++    logger:    logger,
++    dnsRouter: service.FromContext[adapter.DNSRouter](ctx),  // ← Added
++}, nil
++```
++
++3. **Added DialContext method that overrides embedded Device method:**
++```go
++func (e *Endpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
++    switch network {
++    case N.NetworkTCP:
++        e.logger.InfoContext(ctx, "outbound connection to ", destination)
++    case N.NetworkUDP:
++        e.logger.InfoContext(ctx, "outbound packet connection to ", destination)
++    }
++    if destination.IsFqdn() {
++        destinationAddresses, err := e.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
++        if err != nil {
++            return nil, err
++        }
++        return N.DialSerial(ctx, e.Device, network, destination, destinationAddresses)
++    } else if !destination.Addr.IsValid() {
++        return nil, E.New("invalid destination: ", destination)
++    }
++    return e.Device.DialContext(ctx, network, destination)
++}
++```
++
++4. **Added ListenPacket method:**
++```go
++func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
++    e.logger.InfoContext(ctx, "outbound packet connection to ", destination)
++    if destination.IsFqdn() {
++        destinationAddresses, err := e.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
++        if err != nil {
++            return nil, err
++        }
++        packetConn, _, err := N.ListenSerial(ctx, e.Device, destination, destinationAddresses)
++        if err != nil {
++            return nil, err
++        }
++        return packetConn, nil
++    }
++    return e.Device.ListenPacket(ctx, destination)
++}
++```
++
++## How It Works Now
++
++### Request Flow with FakeIP
++
++```
++1. Application requests: ifconfig.me
++              ↓
++2. DNS (FakeIP) returns: 198.18.0.68
++              ↓
++3. TUN inbound receives packet to 198.18.0.68:80
++              ↓
++4. Router checks FakeIP store:
++   198.18.0.68 → "ifconfig.me"
++              ↓
++5. Router sets destination.Fqdn = "ifconfig.me"
++              ↓
++6. Route rule matches → awg-ep
++              ↓
++7. AWG Endpoint.DialContext() receives destination with Fqdn
++              ↓
++8. destination.IsFqdn() == true
++              ↓
++9. dnsRouter.Lookup("ifconfig.me") → real IP
++              ↓
++10. Device.DialContext() connects to real IP through tunnel
++```
++
++### DNS Configuration
++
++For proper operation with FakeIP, configure DNS rules:
++
++```json
++{
++  "dns": {
++    "servers": [
++      {
++        "server": "8.8.8.8",
++		"type": "tls",
++		"detour": "awg-ep"
++        "tag": "dns-for-awg-ep"
++      },
++      {
++        "tag": "fakeip-server",
++        "type": "fakeip",
++        "inet4_range": "198.18.0.0/15"
++      }
++    ],
++    "rules": [
++      {
++        "outbound": "awg-ep",
++        "server": "dns-for-awg-ep"
++      },
++      {
++        "query_type": ["A", "AAAA"],
++        "server": "fakeip-server"
++      }
++    ]
++  }
++}
++```
++
++The rule `"outbound": "awg-ep", "server": "dns-for-awg-ep"` ensures that when AWG endpoint resolves domains, it uses real DNS (not FakeIP).
++
++## Testing
++
++### Before Fix
++```bash
++$ curl -x socks5h://127.0.0.1:20800 http://ifconfig.me
++curl: (97) Can't complete SOCKS5 connection to ifconfig.me. (1)
++
++# Log shows:
++# [ERR!] cannot marshal DNS message
++```
++
++### After Fix
++```bash
++$ curl -x socks5h://127.0.0.1:20800 http://ifconfig.me
++VPS-IP-returns  # VPN server IP - success!
++```
++
++## Build
++
++```bash
++go build -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_awg" ./cmd/sing-box
++```
++
++## Compatibility
++
++- This fix aligns AWG endpoint behavior with the standard WireGuard endpoint
++- No configuration changes required for existing setups
++- FakeIP, standard DNS, and direct IP connections all work correctly
+diff --git a/protocol/awg/endpoint.go b/protocol/awg/endpoint.go
+index 0a8fc346..db0876b6 100644
+--- a/protocol/awg/endpoint.go
++++ b/protocol/awg/endpoint.go
+@@ -15,9 +15,11 @@ import (
+ 	"github.com/sagernet/sing-box/option"
+ 	"github.com/sagernet/sing-box/transport/awg"
+ 	"github.com/sagernet/sing/common/bufio"
++	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/format"
+ 	M "github.com/sagernet/sing/common/metadata"
+ 	N "github.com/sagernet/sing/common/network"
++	"github.com/sagernet/sing/service"
+ 
+ 	"go4.org/netipx"
+ )
+@@ -76,6 +78,8 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 		return nil, err
+ 	}
+ 
++	logger.Debug("AWG IPC config:\n", ipc)
++
+ 	dev, err := awg.NewDevice(ctx, logger, dial, ipc, awg.DeviceOpts{
+ 		UseIntegratedTun: options.UseIntegratedTun,
+ 		Address:          options.Address,
+@@ -88,11 +92,12 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
+ 	}
+ 
+ 	return &Endpoint{
+-		Device:  dev,
+-		Adapter: endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
+-		address: options.Address,
+-		router:  router,
+-		logger:  logger,
++		Device:    dev,
++		Adapter:   endpoint.NewAdapterWithDialerOptions("awg", tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
++		address:   options.Address,
++		router:    router,
++		logger:    logger,
++		dnsRouter: service.FromContext[adapter.DNSRouter](ctx),
+ 	}, nil
+ }
+ 
+@@ -202,6 +207,41 @@ func (e *Endpoint) NewPacketConnectionEx(ctx context.Context, conn N.PacketConn,
+ 	e.router.RoutePacketConnectionEx(ctx, conn, metadata, onClose)
+ }
+ 
++func (e *Endpoint) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
++	switch network {
++	case N.NetworkTCP:
++		e.logger.InfoContext(ctx, "outbound connection to ", destination)
++	case N.NetworkUDP:
++		e.logger.InfoContext(ctx, "outbound packet connection to ", destination)
++	}
++	if destination.IsFqdn() {
++		destinationAddresses, err := e.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
++		if err != nil {
++			return nil, err
++		}
++		return N.DialSerial(ctx, e.Device, network, destination, destinationAddresses)
++	} else if !destination.Addr.IsValid() {
++		return nil, E.New("invalid destination: ", destination)
++	}
++	return e.Device.DialContext(ctx, network, destination)
++}
++
++func (e *Endpoint) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
++	e.logger.InfoContext(ctx, "outbound packet connection to ", destination)
++	if destination.IsFqdn() {
++		destinationAddresses, err := e.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
++		if err != nil {
++			return nil, err
++		}
++		packetConn, _, err := N.ListenSerial(ctx, e.Device, destination, destinationAddresses)
++		if err != nil {
++			return nil, err
++		}
++		return packetConn, nil
++	}
++	return e.Device.ListenPacket(ctx, destination)
++}
++
+ func (w *Endpoint) NewConnectionEx(ctx context.Context, conn net.Conn, source M.Socksaddr, destination M.Socksaddr, onClose N.CloseHandlerFunc) {
+ 	var metadata adapter.InboundContext
+ 	metadata.Inbound = w.Tag()
+-- 
+2.52.0
+
