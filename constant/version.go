@@ -1,3 +1,3 @@
 package constant
 
-var Version = "1.12.12-awg"
+var Version = "1.13.0-awg"
