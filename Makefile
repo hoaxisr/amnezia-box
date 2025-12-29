@@ -270,3 +270,102 @@ update:
 	git fetch
 	git reset FETCH_HEAD --hard
 	git clean -fdx
+
+# =============================================================================
+# Upstream Sync Commands
+# =============================================================================
+
+UPSTREAM_REPO = https://github.com/SagerNet/sing-box.git
+CURRENT_BRANCH = $(shell git rev-parse --abbrev-ref HEAD)
+UPSTREAM_BRANCH = $(if $(filter main,$(CURRENT_BRANCH)),stable-next,dev-next)
+PATCHES_DIR = patches/awg
+
+.PHONY: sync-setup sync-check export-patches apply-patches sync-full
+
+# Initial setup: add upstream remote
+sync-setup:
+	@git remote add upstream $(UPSTREAM_REPO) 2>/dev/null || true
+	@git fetch upstream
+	@echo "Upstream remote configured"
+
+# Check for new upstream commits
+sync-check: sync-setup
+	@echo "Checking upstream status..."
+	@echo "Current branch: $(CURRENT_BRANCH)"
+	@echo "Upstream branch: $(UPSTREAM_BRANCH)"
+	@echo ""
+	@echo "Local HEAD:"
+	@git log --oneline -1 HEAD
+	@echo ""
+	@echo "Upstream $(UPSTREAM_BRANCH):"
+	@git log --oneline -1 upstream/$(UPSTREAM_BRANCH)
+	@echo ""
+	@echo "New commits from upstream:"
+	@git log --oneline HEAD..upstream/$(UPSTREAM_BRANCH) 2>/dev/null | head -15 || echo "  (none)"
+	@echo ""
+	@BEHIND=$$(git rev-list --count HEAD..upstream/$(UPSTREAM_BRANCH) 2>/dev/null || echo "?"); \
+	echo "Status: $$BEHIND commits behind upstream"
+
+# Export AWG patches for backup/review
+export-patches:
+	@echo "Exporting AWG patches..."
+	@rm -rf $(PATCHES_DIR)
+	@mkdir -p $(PATCHES_DIR)
+	@MERGE_BASE=$$(git merge-base HEAD upstream/$(UPSTREAM_BRANCH) 2>/dev/null || echo ""); \
+	if [ -n "$$MERGE_BASE" ]; then \
+		git format-patch $$MERGE_BASE..HEAD -o $(PATCHES_DIR) --numbered; \
+	else \
+		echo "No common ancestor found, exporting recent commits"; \
+		git format-patch -10 HEAD -o $(PATCHES_DIR) --numbered; \
+	fi
+	@echo "Exported $$(ls $(PATCHES_DIR) 2>/dev/null | wc -l) patches to $(PATCHES_DIR)/"
+	@ls -la $(PATCHES_DIR)/ 2>/dev/null || true
+
+# Apply patches from backup (emergency recovery)
+apply-patches:
+	@echo "Applying patches from $(PATCHES_DIR)/..."
+	@git am --3way $(PATCHES_DIR)/*.patch || { \
+		echo "Patch application failed"; \
+		echo "Run 'git am --abort' to undo, then fix manually"; \
+		exit 1; \
+	}
+	@echo "Patches applied"
+
+# Full sync: rebase current branch onto upstream
+sync-full: sync-setup export-patches
+	@echo "Syncing $(CURRENT_BRANCH) with upstream/$(UPSTREAM_BRANCH)..."
+	@git rebase upstream/$(UPSTREAM_BRANCH) || { \
+		echo ""; \
+		echo "Rebase conflicts detected!"; \
+		echo ""; \
+		echo "To resolve:"; \
+		echo "  1. Fix conflicts in the listed files"; \
+		echo "  2. git add <fixed-files>"; \
+		echo "  3. git rebase --continue"; \
+		echo ""; \
+		echo "To abort: git rebase --abort"; \
+		echo "Patches are backed up in $(PATCHES_DIR)/"; \
+		exit 1; \
+	}
+	@echo ""
+	@echo "Sync complete!"
+
+# Show sync status and help
+sync-help:
+	@echo "Upstream Sync Commands:"
+	@echo ""
+	@echo "  make sync-setup      - Add upstream remote"
+	@echo "  make sync-check      - Check for new upstream commits"
+	@echo "  make export-patches  - Export AWG commits as patch files"
+	@echo "  make sync-full       - Sync current branch with upstream"
+	@echo "  make apply-patches   - Apply patches from backup"
+	@echo ""
+	@echo "Branch mapping:"
+	@echo "  alpha -> upstream/dev-next (alpha releases)"
+	@echo "  main  -> upstream/stable-next (stable releases)"
+	@echo ""
+	@echo "Workflow:"
+	@echo "  1. make sync-check       # See what's new"
+	@echo "  2. make sync-full        # Sync and rebase"
+	@echo "  3. make build            # Verify build works"
+	@echo ""
