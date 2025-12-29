@@ -3,7 +3,7 @@ module github.com/sagernet/sing-box
 go 1.24.7
 
 require (
-	github.com/amnezia-vpn/amneziawg-go v0.2.15
+	github.com/amnezia-vpn/amneziawg-go v0.2.17-0.20251219021448-449d7cffd4ad
 	github.com/anthropics/anthropic-sdk-go v1.19.0
 	github.com/anytls/sing-anytls v0.0.11
 	github.com/caddyserver/certmagic v0.25.0
@@ -161,5 +161,3 @@ require (
 	gvisor.dev/gvisor v0.0.0-20231202080848-1f7806d17489 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
-
-replace github.com/amnezia-vpn/amneziawg-go => github.com/hoaxisr/amneziawg-go v0.4.0-awg2.0
