@@ -25,9 +25,8 @@ on:
           - publish-android
   push:
     branches:
-      - stable
-      - testing
-      - unstable
+      - main
+      - alpha
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.build }}
