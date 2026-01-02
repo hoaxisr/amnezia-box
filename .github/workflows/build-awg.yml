@@ -80,6 +80,21 @@ jobs:
           # Delete existing release if exists
           gh release delete "${VERSION}" --yes --repo ${{ github.repository }} 2>/dev/null || true
 
+          # Create release notes
+          cat > notes.md << 'EOF'
+          ## sing-box with AWG 2.0 support
+
+          ### AWG 2.0 Features:
+          - H1-H4 ranges support
+          - S3, S4 padding parameters
+          - I1-I5 obfuscation chains
+
+          ### Platforms:
+          - linux-amd64
+          - entware-mipsel (softfloat)
+          - entware-aarch64
+          EOF
+
           # Create release
           PRERELEASE_FLAG=""
           if [ "${{ inputs.prerelease }}" = "true" ]; then
@@ -90,18 +105,5 @@ jobs:
             --repo ${{ github.repository }} \
             --title "${VERSION}" \
             ${PRERELEASE_FLAG} \
-            --notes "## sing-box ${{ inputs.version }} with AWG 2.0 support
-
-### AWG 2.0 Features:
-- H1-H4 ranges support
-- S3, S4 padding parameters
-- I1-I5 obfuscation chains
-
-### Platforms:
-- linux-amd64
-- entware-mipsel (softfloat)
-- entware-aarch64
-
-### Build tags:
-\`with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_awg\`" \
+            --notes-file notes.md \
             dist/*
