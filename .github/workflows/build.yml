@@ -25,8 +25,8 @@ on:
           - publish-android
   push:
     branches:
-      - main-next
-      - dev-next
+      - main
+      - alpha
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name }}-${{ inputs.build }}
