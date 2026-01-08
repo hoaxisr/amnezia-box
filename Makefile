@@ -385,5 +385,49 @@ sync-help:
 	@echo "  4. make build            # Verify build works"
 	@echo ""
 
+# =============================================================================
+# Vendor Build with Patches
+# =============================================================================
+# Use this to build with patched dependencies (e.g., <c> counter tag in AWG)
+
+.PHONY: vendor patch-deps build-patched clean-vendor
+
+# Create vendor directory with all dependencies
+vendor:
+	@echo "Creating vendor directory..."
+	go mod vendor
+	@echo "Vendor directory created"
+
+# Apply patches to vendored dependencies
+patch-deps: vendor
+	@echo "Applying dependency patches..."
+	@./patches/amneziawg-go/apply.sh
+	@echo "All patches applied"
+
+# Build with vendored (and patched) dependencies
+build-patched: patch-deps
+	@echo "Building with patched dependencies..."
+	export GOTOOLCHAIN=local && \
+	go build -mod=vendor $(MAIN_PARAMS) $(MAIN)
+	@echo "Build complete"
+
+# Clean vendor directory
+clean-vendor:
+	rm -rf vendor
+	@echo "Vendor directory removed"
+
+# Show patching help
+patch-help:
+	@echo "Vendor/Patch Commands:"
+	@echo ""
+	@echo "  make vendor        - Create vendor directory"
+	@echo "  make patch-deps    - Apply patches to vendor"
+	@echo "  make build-patched - Build with patched dependencies"
+	@echo "  make clean-vendor  - Remove vendor directory"
+	@echo ""
+	@echo "Patches applied:"
+	@echo "  - amneziawg-go: <c> packet counter tag"
+	@echo ""
+
 %:
 	@:
