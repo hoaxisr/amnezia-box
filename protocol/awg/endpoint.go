@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/transport/awg"
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/format"
@@ -43,11 +44,16 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}
 
 	options.UDPFragmentDefault = true
+	// Check if any peer has a domain address
+	remoteIsDomain := common.Any(options.Peers, func(peer option.AwgPeerOptions) bool {
+		return !M.ParseAddr(peer.Address).IsValid()
+	})
 	dial, err := dialer.NewWithOptions(dialer.Options{
-		Context:        ctx,
-		Options:        options.DialerOptions,
-		RemoteIsDomain: false,
-		DirectOutbound: true,
+		Context:          ctx,
+		Options:          options.DialerOptions,
+		RemoteIsDomain:   remoteIsDomain,
+		ResolverOnDetour: true,
+		DirectOutbound:   true,
 	})
 	if err != nil {
 		return nil, err
@@ -73,7 +79,22 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 
-	ipc, err := genIpcConfig(options)
+	// Create peer resolver function for domain endpoints
+	// Always use system resolver for peer endpoints because:
+	// 1. VPN server must be resolved before VPN tunnel is established
+	// 2. dnsRouter may not be fully initialized at this stage
+	var resolvePeer func(domain string) (netip.Addr, error)
+	if remoteIsDomain {
+		resolvePeer = func(domain string) (netip.Addr, error) {
+			addrs, lookupErr := net.DefaultResolver.LookupNetIP(ctx, "ip", domain)
+			if lookupErr != nil {
+				return netip.Addr{}, lookupErr
+			}
+			return addrs[0], nil
+		}
+	}
+
+	ipc, err := genIpcConfig(options, resolvePeer)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +122,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	}, nil
 }
 
-func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
+func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string) (netip.Addr, error)) (string, error) {
 	privateKeyBytes, err := base64.StdEncoding.DecodeString(opts.PrivateKey)
 	if err != nil {
 		return "", err
@@ -173,7 +194,20 @@ func genIpcConfig(opts option.AwgEndpointOptions) (string, error) {
 			s += "\npreshared_key=" + hex.EncodeToString(presharedKeyBytes)
 		}
 		if peer.Address != "" && peer.Port != 0 {
-			s += "\nendpoint=" + peer.Address + ":" + format.ToString(peer.Port)
+			// Resolve domain to IP if necessary
+			endpointAddr := peer.Address
+			if addr := M.ParseAddr(peer.Address); !addr.IsValid() {
+				// It's a domain, resolve it
+				if resolvePeer == nil {
+					return "", E.New("peer address is a domain but no resolver provided: ", peer.Address)
+				}
+				resolvedAddr, resolveErr := resolvePeer(peer.Address)
+				if resolveErr != nil {
+					return "", E.Cause(resolveErr, "resolve peer endpoint ", peer.Address)
+				}
+				endpointAddr = resolvedAddr.String()
+			}
+			s += "\nendpoint=" + endpointAddr + ":" + format.ToString(peer.Port)
 		}
 		if peer.PersistentKeepaliveInterval != 0 {
 			s += "\npersistent_keepalive_interval=" + format.ToString(peer.PersistentKeepaliveInterval)
