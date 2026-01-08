@@ -1,0 +1,80 @@
+From: amnezia-box <noreply@amnezia-box.local>
+Subject: [PATCH] feat(awg): add <c> packet counter obfuscation tag
+
+Add support for the <c> tag which outputs a 4-byte packet counter
+in network byte order (big-endian). This tag is documented in AWG
+specification but was missing from amneziawg-go implementation.
+
+The counter is per-obfChain instance and increments with each
+Obfuscate() call. Deobfuscation always succeeds (counter values
+are not validated on receive).
+
+---
+ device/obf.go         |  1 +
+ device/obf_counter.go | 42 ++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 43 insertions(+)
+ create mode 100644 device/obf_counter.go
+
+diff --git a/device/obf.go b/device/obf.go
+index 1234567..abcdefg 100644
+--- a/device/obf.go
++++ b/device/obf.go
+@@ -11,6 +11,7 @@ type obfBuilder func(val string) (obf, error)
+ var obfBuilders = map[string]obfBuilder{
+ 	"b":  newBytesObf,
+ 	"t":  newTimestampObf,
++	"c":  newCounterObf,
+ 	"r":  newRandObf,
+ 	"rc": newRandCharObf,
+ 	"rd": newRandDigitsObf,
+diff --git a/device/obf_counter.go b/device/obf_counter.go
+new file mode 100644
+index 0000000..1234567
+--- /dev/null
++++ b/device/obf_counter.go
+@@ -0,0 +1,42 @@
++package device
++
++import (
++	"encoding/binary"
++	"sync/atomic"
++)
++
++// newCounterObf creates a packet counter obfuscator.
++// The <c> tag outputs a 4-byte counter in network byte order (big-endian).
++// Counter starts at 0 and increments with each Obfuscate() call.
++// This matches the AWG kernel module implementation.
++func newCounterObf(_ string) (obf, error) {
++	return &counterObf{}, nil
++}
++
++type counterObf struct {
++	counter uint32
++}
++
++// Obfuscate writes the current counter value (4 bytes, big-endian)
++// and increments it atomically.
++func (o *counterObf) Obfuscate(dst, src []byte) {
++	// Get current value and increment atomically
++	val := atomic.AddUint32(&o.counter, 1) - 1
++	binary.BigEndian.PutUint32(dst, val)
++}
++
++// Deobfuscate always returns true - counter values are not validated.
++// The receiving side doesn't know the expected counter value.
++func (o *counterObf) Deobfuscate(dst, src []byte) bool {
++	return true
++}
++
++// ObfuscatedLen returns 4 (counter is always 4 bytes).
++func (o *counterObf) ObfuscatedLen(n int) int {
++	return 4
++}
++
++// DeobfuscatedLen returns 0 (counter doesn't contribute to original data).
++func (o *counterObf) DeobfuscatedLen(n int) int {
++	return 0
++}
+--
+2.43.0
+
