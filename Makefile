@@ -19,6 +19,17 @@ build:
 	export GOTOOLCHAIN=local && \
 	go build $(MAIN_PARAMS) $(MAIN)
 
+# Minimal build for routers - only vless+awg, no WS/HTTP/QUIC transports
+# Uses grpc-lite (no with_grpc = lighter grpc implementation)
+TAGS_MINIMAL = minimal,with_utls,with_awg,badlinkname
+MAIN_PARAMS_MINIMAL = $(PARAMS) -tags "$(TAGS_MINIMAL)"
+
+build-minimal:
+	export GOTOOLCHAIN=local && \
+	go build $(MAIN_PARAMS_MINIMAL) $(MAIN)
+	@echo "Minimal build complete:"
+	@ls -lh sing-box
+
 race:
 	export GOTOOLCHAIN=local && \
 	go build -race $(MAIN_PARAMS) $(MAIN)
