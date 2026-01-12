@@ -1,4 +1,4 @@
-//go:build minimal && !ultra_minimal && !nano
+//go:build ultra_minimal && !nano
 
 package v2ray
 
@@ -21,8 +21,8 @@ type (
 	ClientConstructor[O any] func(ctx context.Context, dialer N.Dialer, serverAddr M.Socksaddr, options O, tlsConfig tls.Config) (adapter.V2RayClientTransport, error)
 )
 
-// Minimal transport handler - only TCP (no transport) and gRPC are supported
-// WS, HTTP, H2, HTTPUpgrade, QUIC are excluded to reduce binary size
+// Ultra-minimal transport handler - only TCP (no transport), no gRPC
+// All V2Ray transports are excluded
 
 func NewServerTransport(ctx context.Context, logger logger.ContextLogger, options option.V2RayTransportOptions, tlsConfig tls.ServerConfig, handler adapter.V2RayServerTransportHandler) (adapter.V2RayServerTransport, error) {
 	if options.Type == "" {
@@ -30,15 +30,15 @@ func NewServerTransport(ctx context.Context, logger logger.ContextLogger, option
 	}
 	switch options.Type {
 	case C.V2RayTransportTypeGRPC:
-		return NewGRPCServer(ctx, logger, options.GRPCOptions, tlsConfig, handler)
+		return nil, E.New("gRPC transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeHTTP:
-		return nil, E.New("HTTP transport is not included in minimal build")
+		return nil, E.New("HTTP transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeWebsocket:
-		return nil, E.New("WebSocket transport is not included in minimal build")
+		return nil, E.New("WebSocket transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeQUIC:
-		return nil, E.New("QUIC transport is not included in minimal build")
+		return nil, E.New("QUIC transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeHTTPUpgrade:
-		return nil, E.New("HTTPUpgrade transport is not included in minimal build")
+		return nil, E.New("HTTPUpgrade transport is not included in ultra-minimal build")
 	default:
 		return nil, E.New("unknown transport type: " + options.Type)
 	}
@@ -50,15 +50,15 @@ func NewClientTransport(ctx context.Context, dialer N.Dialer, serverAddr M.Socks
 	}
 	switch options.Type {
 	case C.V2RayTransportTypeGRPC:
-		return NewGRPCClient(ctx, dialer, serverAddr, options.GRPCOptions, tlsConfig)
+		return nil, E.New("gRPC transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeHTTP:
-		return nil, E.New("HTTP transport is not included in minimal build")
+		return nil, E.New("HTTP transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeWebsocket:
-		return nil, E.New("WebSocket transport is not included in minimal build")
+		return nil, E.New("WebSocket transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeQUIC:
-		return nil, E.New("QUIC transport is not included in minimal build")
+		return nil, E.New("QUIC transport is not included in ultra-minimal build")
 	case C.V2RayTransportTypeHTTPUpgrade:
-		return nil, E.New("HTTPUpgrade transport is not included in minimal build")
+		return nil, E.New("HTTPUpgrade transport is not included in ultra-minimal build")
 	default:
 		return nil, E.New("unknown transport type: " + options.Type)
 	}

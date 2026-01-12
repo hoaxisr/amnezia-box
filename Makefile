@@ -19,8 +19,7 @@ build:
 	export GOTOOLCHAIN=local && \
 	go build $(MAIN_PARAMS) $(MAIN)
 
-# Minimal build for routers - only vless+awg, no WS/HTTP/QUIC transports
-# Uses grpc-lite (no with_grpc = lighter grpc implementation)
+# Minimal build for routers - only vless+awg, gRPC-lite transport
 TAGS_MINIMAL = minimal,with_utls,with_awg,badlinkname
 MAIN_PARAMS_MINIMAL = $(PARAMS) -tags "$(TAGS_MINIMAL)"
 
@@ -28,6 +27,39 @@ build-minimal:
 	export GOTOOLCHAIN=local && \
 	go build $(MAIN_PARAMS_MINIMAL) $(MAIN)
 	@echo "Minimal build complete:"
+	@ls -lh sing-box
+
+# Ultra-minimal build - only TCP transport, no gRPC, only UDP DNS
+TAGS_ULTRA = ultra_minimal,with_utls,with_awg,badlinkname
+MAIN_PARAMS_ULTRA = $(PARAMS) -tags "$(TAGS_ULTRA)"
+
+build-ultra-minimal:
+	export GOTOOLCHAIN=local && \
+	go build $(MAIN_PARAMS_ULTRA) $(MAIN)
+	@echo "Ultra-minimal build complete:"
+	@ls -lh sing-box
+
+# Ultra-minimal + UPX compression (requires: pacman -S upx)
+build-ultra-minimal-upx: build-ultra-minimal
+	@command -v upx >/dev/null 2>&1 || { echo "Error: upx not installed. Run: sudo pacman -S upx"; exit 1; }
+	upx --best --lzma sing-box
+	@echo "UPX compressed:"
+	@ls -lh sing-box
+
+# Nano build - VLESS-only, no AWG, no gRPC, minimal DNS
+TAGS_NANO = nano,with_utls,badlinkname,tfogo_checklinkname0
+MAIN_PARAMS_NANO = $(PARAMS) -tags "$(TAGS_NANO)"
+
+build-nano:
+	export GOTOOLCHAIN=local && \
+	go build $(MAIN_PARAMS_NANO) $(MAIN)
+	@echo "Nano build complete:"
+	@ls -lh sing-box
+
+build-nano-upx: build-nano
+	@command -v upx >/dev/null 2>&1 || { echo "Error: upx not installed"; exit 1; }
+	upx --best --lzma sing-box
+	@echo "Nano + UPX:"
 	@ls -lh sing-box
 
 race:
