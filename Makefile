@@ -4,7 +4,9 @@ TAGS ?= with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_
 
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
-VERSION=$(shell CGO_ENABLED=0 GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go run github.com/sagernet/sing-box/cmd/internal/read_tag@latest)
+# Get version: use AWG tag if present, otherwise upstream tag + awg2.0 suffix
+NEAREST_TAG = $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+VERSION = $(patsubst v%,%,$(NEAREST_TAG))$(if $(findstring -awg,$(NEAREST_TAG)),,-awg2.0)
 
 PARAMS = -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(VERSION)' -s -w -buildid="
 MAIN_PARAMS = $(PARAMS) -tags "$(TAGS)"
