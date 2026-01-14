@@ -4,7 +4,9 @@ TAGS ?= $(shell cat release/DEFAULT_BUILD_TAGS_OTHERS),with_awg
 
 GOHOSTOS = $(shell go env GOHOSTOS)
 GOHOSTARCH = $(shell go env GOHOSTARCH)
-VERSION=$(shell CGO_ENABLED=0 GOOS=$(GOHOSTOS) GOARCH=$(GOHOSTARCH) go run github.com/sagernet/sing-box/cmd/internal/read_tag@latest)
+# Get version: use AWG tag if present, otherwise upstream tag + awg2.0 suffix
+NEAREST_TAG = $(shell git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+VERSION = $(patsubst v%,%,$(NEAREST_TAG))$(if $(findstring -awg,$(NEAREST_TAG)),,-awg2.0)
 
 LDFLAGS_SHARED = $(shell cat release/LDFLAGS)
 PARAMS = -v -trimpath -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$(VERSION)' $(LDFLAGS_SHARED) -s -w -buildid="
