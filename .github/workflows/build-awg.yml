@@ -41,8 +41,9 @@ jobs:
         with:
           go-version: ^1.24
 
-      - name: Apply AWG patches
+      - name: Vendor dependencies and apply patches
         run: |
+          go mod vendor
           if [ -x "./patches/amneziawg-go/apply.sh" ]; then
             echo "Applying AWG patches..."
             ./patches/amneziawg-go/apply.sh
