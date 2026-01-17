@@ -98,6 +98,8 @@ jobs:
           - H1-H4 ranges support
           - S3, S4 padding parameters
           - I1-I5 obfuscation chains
+          - S4 keepalive padding fix (incoming keepalives handled correctly)
+          - Counter tag `<c>` obfuscation support
 
           ### Platforms:
           - linux-amd64
