@@ -1,0 +1,44 @@
+From: Claude Code <noreply@anthropic.com>
+Subject: [PATCH] fix: handle transport packets without S4 padding (keepalives)
+
+The send side (send.go:575) only adds S4 padding to data packets, not
+keepalives. However, the receive side was always expecting S4 padding
+for all transport packets, causing incoming keepalives to be rejected
+as "unknown type".
+
+This fix modifies DeterminePacketTypeAndPadding to:
+1. First try detecting transport with S4 padding (for data packets)
+2. If that fails, try without padding (for keepalives)
+
+This fixes AWG 2.0 connections where keepalives would fail validation.
+
+---
+ device/receive.go | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/device/receive.go b/device/receive.go
+index 1234567..abcdefg 100644
+--- a/device/receive.go
++++ b/device/receive.go
+@@ -603,12 +603,21 @@ func (device *Device) DeterminePacketTypeAndPadding(packet []byte, expectedType
+ 		padding := device.paddings.transport
+ 		header := device.headers.transport
+
++		// First try with S4 padding (for data packets)
+ 		if size >= padding+MessageTransportHeaderSize {
+ 			data := packet[padding:]
+ 			if header.Validate(binary.LittleEndian.Uint32(data)) {
+ 				return MessageTransportType, padding
+ 			}
+ 		}
++
++		// If that fails, try without padding (for keepalives - see send.go line 575)
++		// Keepalives don't get S4 padding, so check offset 0 as well
++		if padding > 0 && size >= MessageTransportHeaderSize {
++			if header.Validate(binary.LittleEndian.Uint32(packet)) {
++				return MessageTransportType, 0
++			}
++		}
+ 	}
+
+ 	return MessageUnknownType, 0
