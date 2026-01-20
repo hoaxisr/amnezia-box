@@ -20,7 +20,9 @@ echo "=== Applying AWG patches ==="
 # Patch 1: Counter tag support
 echo ""
 echo "1. Adding counter tag support..."
-cp "$SCRIPT_DIR/obf_counter.go" "$VENDOR_AWG/obf_counter.go"
+# Copy obf_counter.go but remove the //go:build ignore lines (they're only for patches dir)
+sed '/^\/\/go:build ignore/d; /^\/\/ +build ignore/d; /^\/\/ This file is a source template/d; /^\/\/ It gets copied to vendor/d; /^\/\/ by apply.sh script/d' \
+    "$SCRIPT_DIR/obf_counter.go" > "$VENDOR_AWG/obf_counter.go"
 
 OBF_GO="$VENDOR_AWG/obf.go"
 if grep -q '"c":' "$OBF_GO"; then

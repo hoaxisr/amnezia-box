@@ -1,3 +1,10 @@
+//go:build ignore
+// +build ignore
+
+// This file is a source template for vendor patching.
+// It gets copied to vendor/github.com/amnezia-vpn/amneziawg-go/device/
+// by apply.sh script. Do not compile directly.
+
 package device
 
 import (
