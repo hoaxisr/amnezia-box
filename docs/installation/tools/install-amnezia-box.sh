@@ -432,16 +432,7 @@ install_binary() {
         fi
     elif [ "$install_systemd" = "auto" ] && has_systemd; then
         echo ""
-        printf "Install systemd service? [Y/n] "
-        read -r answer
-        case "$answer" in
-            [Nn]*)
-                info "Skipping systemd setup"
-                ;;
-            *)
-                setup_systemd
-                ;;
-        esac
+        info "To install systemd service, re-run with --systemd flag"
     fi
 
     # Restart service if it was running
