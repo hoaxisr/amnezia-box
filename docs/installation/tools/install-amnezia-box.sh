@@ -414,6 +414,14 @@ install_binary() {
     info "Installing to ${INSTALL_BIN}/${BINARY_NAME}..."
     run_privileged mv "${tmp_dir}/${BINARY_NAME}" "${INSTALL_BIN}/${BINARY_NAME}"
 
+    # Set capabilities for TUN interface creation and privileged ports
+    if command -v setcap >/dev/null 2>&1; then
+        info "Setting capabilities for TUN support..."
+        run_privileged setcap 'cap_net_admin,cap_net_bind_service=+ep' "${INSTALL_BIN}/${BINARY_NAME}"
+    else
+        warn "setcap not found - you may need to run as root for TUN interfaces"
+    fi
+
     success "Installed to ${INSTALL_BIN}/${BINARY_NAME}"
 
     # Verify installation
