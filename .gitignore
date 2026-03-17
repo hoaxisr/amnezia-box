@@ -22,3 +22,5 @@ CLAUDE.md
 AGENTS.md
 /.claude/
 vendor/
+/amneziawg-go-build/
+test/config.json
