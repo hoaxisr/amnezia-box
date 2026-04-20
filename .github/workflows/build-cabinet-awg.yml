@@ -313,6 +313,9 @@ jobs:
         if: matrix.openwrt != '' || matrix.alpine != ''
         run: |-
           docker run --rm -v /usr/local/bin:/mnt alpine:edge sh -c "apk add --no-cache apk-tools-static && cp /sbin/apk.static /mnt/apk && chmod +x /mnt/apk"
+      - name: Make scripts executable
+        run: |
+          chmod +x .github/build_openwrt_apk_awg.sh
       - name: Package OpenWrt APK
         if: matrix.openwrt != ''
         run: |-
@@ -324,6 +327,9 @@ jobs:
               "dist/sing-box" \
               "dist/sing-box_${{ needs.calculate_version.outputs.version }}_openwrt_${architecture}.apk"
           done
+      - name: Make scripts executable
+        run: |
+          chmod +x .github/build_alpine_apk_awg.sh
       - name: Package Alpine APK
         if: matrix.alpine != ''
         run: |-
@@ -506,8 +512,8 @@ jobs:
           chmod +x patches/hungcabinet/patch-android.sh
           patches/hungcabinet/patch-android.sh
         env:
-          APP_ID: com.hungcabinet.amnezia-box
-          APP_NAME: amnezia-box (hc)
+          APP_ID: com.hungcabinet.amnezia.box
+          APP_NAME: hc-amnezia-box
       - name: Build
         run: |-
           mkdir clients/android/app/libs
