@@ -318,7 +318,7 @@ jobs:
         run: |-
           set -xeuo pipefail
           for architecture in ${{ matrix.openwrt }}; do
-            .github/build_openwrt_apk.sh \
+            .github/build_openwrt_apk_awg.sh \
               "$architecture" \
               "${{ needs.calculate_version.outputs.version }}" \
               "dist/sing-box" \
@@ -328,7 +328,7 @@ jobs:
         if: matrix.alpine != ''
         run: |-
           set -xeuo pipefail
-          .github/build_alpine_apk.sh \
+          .github/build_alpine_apk_awg.sh \
             "${{ matrix.alpine }}" \
             "${{ needs.calculate_version.outputs.version }}" \
             "dist/sing-box" \
@@ -506,8 +506,8 @@ jobs:
           chmod +x patches/hungcabinet/patch-android.sh
           patches/hungcabinet/patch-android.sh
         env:
-          APP_ID: com.myfork.amnezia
-          APP_NAME: My Amnezia VPN
+          APP_ID: com.hungcabinet.amnezia-box
+          APP_NAME: amnezia-box (hc)
       - name: Build
         run: |-
           mkdir clients/android/app/libs
