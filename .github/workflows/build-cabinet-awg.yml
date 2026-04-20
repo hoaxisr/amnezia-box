@@ -1,4 +1,4 @@
-name: Build
+name: Build AWG (HungCabinet version)
 
 on:
   workflow_dispatch:
