@@ -504,13 +504,13 @@ jobs:
         with:
           path: ~/.gradle
           key: gradle-${{ hashFiles('**/*.gradle') }}
-      - name: Decode keystore
-        run: |
-          echo "${{ secrets.RELEASE_KEYSTORE }}" | base64 -d > clients/android/app/release.keystore
       - name: Patch Android IDs
         run: |
-          chmod +x patches/hungcabinet/patch-android.sh
-          patches/hungcabinet/patch-android.sh
+          chmod +x patches/hungcabinet/android/patch.sh
+          patches/hungcabinet/android/patch.sh
+          cd clients/android
+          ./gradlew clean
+          cd ../..
         env:
           APP_ID: com.hungcabinet.amnezia.box
           APP_NAME: hc-amnezia-box
@@ -563,7 +563,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="v${{ inputs.version }}-awg2.0"
+          VERSION="${{ inputs.version }}"
 
           # Delete existing release if exists
           gh release delete "${VERSION}" --yes --repo ${{ github.repository }} 2>/dev/null || true
