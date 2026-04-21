@@ -1,8 +1,8 @@
-# amnezia-box
+# sing-box with AWG 2.0 (amnezia-box)
 
 Fork of [sing-box](https://github.com/SagerNet/sing-box) with [AmneziaWG](https://docs.amnezia.org/documentation/amnezia-wg/) (AWG) support.
 
-> This is a fork of a fork: sing-box → [amnezia-vpn/sing-box](https://github.com/amnezia-vpn/sing-box) → amnezia-box
+> This is a fork of a forks: sing-box → [amnezia-vpn/amnezia-box](https://github.com/amnezia-vpn/amnezia-box) → [amnezia-vpn/amnezia-box](https://github.com/amnezia-vpn/amnezia-box) with changes from [hoaxisr/amnezia-box](https://github.com/hoaxisr/amnezia-box)
 
 ## Features
 
@@ -37,10 +37,6 @@ This aligns AWG endpoint behavior with the standard WireGuard endpoint implement
 go build -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_awg" ./cmd/sing-box
 ```
 
-## Branch Strategy
-
-- `alpha` → syncs with upstream `dev-next` (development)
-- `main` → syncs with upstream `stable-next` (stable releases)
 
 ## Documentation
 
