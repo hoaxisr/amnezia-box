@@ -504,7 +504,7 @@ jobs:
         with:
           path: ~/.gradle
           key: gradle-${{ hashFiles('**/*.gradle') }}
-      - name: Patch Android IDs
+      - name: Patch Android Files
         run: |
           chmod +x patches/hungcabinet/android/patch.sh
           patches/hungcabinet/android/patch.sh
