@@ -76,6 +76,43 @@ jobs:
           - { os: linux, arch: amd64, variant: glibc, naive: true }
           - { os: linux, arch: amd64, variant: musl, naive: true, debian: amd64, rpm: x86_64, pacman: x86_64, alpine: x86_64, openwrt: "x86_64" }
 
+          - { os: linux, arch: arm64, variant: purego, naive: true }
+          - { os: linux, arch: arm64, variant: glibc, naive: true }
+          - { os: linux, arch: arm64, variant: musl, naive: true, debian: arm64, rpm: aarch64, pacman: aarch64, alpine: aarch64, openwrt: "aarch64_cortex-a53 aarch64_cortex-a72 aarch64_cortex-a76 aarch64_generic" }
+
+          - { os: linux, arch: "386", go386: sse2 }
+          - { os: linux, arch: "386", variant: glibc, naive: true, go386: sse2 }
+          - { os: linux, arch: "386", variant: musl, naive: true, go386: sse2, debian: i386, rpm: i386, alpine: x86, openwrt: "i386_pentium4" }
+
+          - { os: linux, arch: arm, goarm: "7" }
+          - { os: linux, arch: arm, variant: glibc, naive: true, goarm: "7" }
+          - { os: linux, arch: arm, variant: musl, naive: true, goarm: "7", debian: armhf, rpm: armv7hl, pacman: armv7hl, alpine: armv7, openwrt: "arm_cortex-a5_vfpv4 arm_cortex-a7_neon-vfpv4 arm_cortex-a7_vfpv4 arm_cortex-a8_vfpv3 arm_cortex-a9_neon arm_cortex-a9_vfpv3-d16 arm_cortex-a15_neon-vfpv4" }
+
+          - { os: linux, arch: mipsle, gomips: hardfloat, naive: true, variant: glibc }
+          - { os: linux, arch: mipsle, gomips: softfloat, naive: true, variant: musl, debian: mipsel, rpm: mipsel, openwrt: "mipsel_24kc mipsel_74kc mipsel_mips32" }
+          - { os: linux, arch: mips64le, gomips: hardfloat, naive: true, variant: glibc, debian: mips64el, rpm: mips64el }
+          - { os: linux, arch: riscv64, naive: true, variant: glibc }
+          - { os: linux, arch: riscv64, naive: true, variant: musl, debian: riscv64, rpm: riscv64, alpine: riscv64, openwrt: "riscv64_generic" }
+          - { os: linux, arch: loong64, naive: true, variant: glibc }
+          - { os: linux, arch: loong64, naive: true, variant: musl, debian: loongarch64, rpm: loongarch64, alpine: loongarch64, openwrt: "loongarch64_generic" }
+
+          - { os: linux, arch: "386", go386: softfloat, openwrt: "i386_pentium-mmx" }
+          - { os: linux, arch: arm, goarm: "5", openwrt: "arm_arm926ej-s arm_cortex-a7 arm_cortex-a9 arm_fa526 arm_xscale" }
+          - { os: linux, arch: arm, goarm: "6", debian: armel, rpm: armv6hl, openwrt: "arm_arm1176jzf-s_vfp" }
+          - { os: linux, arch: mips, gomips: softfloat, openwrt: "mips_24kc mips_4kec mips_mips32" }
+          - { os: linux, arch: mipsle, gomips: hardfloat, openwrt: "mipsel_24kc_24kf" }
+          - { os: linux, arch: mipsle, gomips: softfloat }
+          - { os: linux, arch: mips64, gomips: softfloat, openwrt: "mips64_mips64r2 mips64_octeonplus" }
+          - { os: linux, arch: mips64le, gomips: hardfloat }
+          - { os: linux, arch: mips64le, gomips: softfloat, openwrt: "mips64el_mips64r2" }
+          - { os: linux, arch: s390x, debian: s390x, rpm: s390x }
+          - { os: linux, arch: ppc64le, debian: ppc64el, rpm: ppc64le }
+          - { os: linux, arch: riscv64 }
+          - { os: linux, arch: loong64 }
+
+          - { os: windows, arch: amd64, legacy_win7: true, legacy_name: "windows-7" }
+          - { os: windows, arch: "386", legacy_win7: true, legacy_name: "windows-7" }
+
           - { os: android, arch: arm64, ndk: "aarch64-linux-android23" }
           - { os: android, arch: arm, ndk: "armv7a-linux-androideabi23" }
           - { os: android, arch: amd64, ndk: "x86_64-linux-android23" }
@@ -171,9 +208,9 @@ jobs:
         run: |
           set -xeuo pipefail
           if [[ "${{ matrix.naive }}" == "true" ]]; then
-            TAGS=$(cat release/hungcabinet/DEFAULT_BUILD_TAGS)
+            TAGS=$(cat release/DEFAULT_BUILD_TAGS)
           else
-            TAGS=$(cat release/hungcabinet/DEFAULT_BUILD_TAGS_OTHERS)
+            TAGS=$(cat release/DEFAULT_BUILD_TAGS_OTHERS)
           fi
           if [[ "${{ matrix.variant }}" == "purego" ]]; then
             TAGS="${TAGS},with_purego"
@@ -391,7 +428,7 @@ jobs:
       - name: Build
         if: matrix.naive
         run: |
-          $TAGS = Get-Content release/hungcabinet/DEFAULT_BUILD_TAGS_WINDOWS
+          $TAGS = Get-Content release/DEFAULT_BUILD_TAGS_WINDOWS
           $LDFLAGS_SHARED = Get-Content release/LDFLAGS
           mkdir -p dist
           go build -v -trimpath -o dist/sing-box.exe -tags "$TAGS" `
@@ -405,7 +442,7 @@ jobs:
       - name: Build
         if: ${{ !matrix.naive }}
         run: |
-          $TAGS = Get-Content release/hungcabinet/DEFAULT_BUILD_TAGS_OTHERS
+          $TAGS = Get-Content release/DEFAULT_BUILD_TAGS_OTHERS
           $LDFLAGS_SHARED = Get-Content release/LDFLAGS
           mkdir -p dist
           go build -v -trimpath -o dist/sing-box.exe -tags "$TAGS" `
@@ -464,6 +501,16 @@ jobs:
         with:
           fetch-depth: 0
           submodules: 'recursive'
+      - name: Patch Android Files
+        run: |
+          chmod +x patches/hungcabinet/android/patch.sh
+          patches/hungcabinet/android/patch.sh
+          cd clients/android
+          ./gradlew clean
+          cd ../..
+        env:
+          APP_ID: com.hungcabinet.amnezia.box
+          APP_NAME: hc-amnezia-box
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
@@ -504,16 +551,6 @@ jobs:
         with:
           path: ~/.gradle
           key: gradle-${{ hashFiles('**/*.gradle') }}
-      - name: Patch Android Files
-        run: |
-          chmod +x patches/hungcabinet/android/patch.sh
-          patches/hungcabinet/android/patch.sh
-          cd clients/android
-          ./gradlew clean
-          cd ../..
-        env:
-          APP_ID: com.hungcabinet.amnezia.box
-          APP_NAME: hc-amnezia-box
       - name: Build
         run: |-
           mkdir clients/android/app/libs
