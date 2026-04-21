@@ -1,0 +1,112 @@
+name: Sync Upstream Release
+on:
+  schedule:
+    - cron: '0 */12 * * *'
+  workflow_dispatch:
+
+env:
+  UPSTREAM_REPO: 'SagerNet/sing-box'
+  BASE_BRANCH: 'main'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream https://github.com/${{ env.UPSTREAM_REPO }}.git
+          git fetch upstream --tags
+
+      - name: Get latest release tag
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=$(gh api repos/${{ env.UPSTREAM_REPO }}/releases/latest --jq '.tag_name')
+          if [ -z "$LATEST_TAG" ]; then
+            echo "No releases found in upstream."
+            exit 1
+          fi
+          echo "tag=$LATEST_TAG" >> $GITHUB_OUTPUT
+
+      - name: Check if already synced
+        id: idempotency
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          # Check if a branch for this tag already exists
+          BRANCH_EXISTS=$(git ls-remote --exit-code origin "refs/heads/upstream/$TAG" > /dev/null 2>&1 && echo "true" || echo "false")
+          CONFLICT_BRANCH_EXISTS=$(git ls-remote --exit-code origin "refs/heads/upstream/${TAG}-conflict" > /dev/null 2>&1 && echo "true" || echo "false")
+          if [ "$BRANCH_EXISTS" = "true" ] || [ "$CONFLICT_BRANCH_EXISTS" = "true" ]; then
+            echo "Tag $TAG already processed. Skipping."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create release branch and test merge
+        id: check
+        if: steps.idempotency.outputs.skip == 'false'
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          git checkout -B "upstream/$TAG" "upstream/$TAG"
+
+          git checkout "${{ env.BASE_BRANCH }}"
+          if git merge --no-commit --no-ff "upstream/$TAG" > /dev/null 2>&1; then
+            git merge --abort
+            echo "status=clean" >> $GITHUB_OUTPUT
+            echo "Branch merges cleanly into ${{ env.BASE_BRANCH }}."
+          else
+            git merge --abort
+            echo "status=conflict" >> $GITHUB_OUTPUT
+            echo "Branch has merge conflicts into ${{ env.BASE_BRANCH }}."
+          fi
+
+      - name: Push branch
+        if: steps.idempotency.outputs.skip == 'false'
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          if [ "${{ steps.check.outputs.status }}" = "clean" ]; then
+            TARGET_BRANCH="upstream/$TAG"
+          else
+            TARGET_BRANCH="upstream/${TAG}-conflict"
+          fi
+          git push origin "upstream/$TAG":"$TARGET_BRANCH"
+
+      - name: Create Pull Request
+        if: steps.idempotency.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          STATUS="${{ steps.check.outputs.status }}"
+          if [ "$STATUS" = "clean" ]; then
+            TARGET_BRANCH="upstream/$TAG"
+            LABEL="auto-merge"
+            BODY="Upstream release [$TAG](https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$TAG) — no conflicts."
+          else
+            TARGET_BRANCH="upstream/${TAG}-conflict"
+            LABEL="conflicts"
+            BODY="Upstream release [$TAG](https://github.com/${{ env.UPSTREAM_REPO }}/releases/tag/$TAG) — **merge conflicts detected**, manual resolution required."
+          fi
+          gh pr create \
+            --title "Sync upstream: $TAG" \
+            --body "$BODY" \
+            --head "$TARGET_BRANCH" \
+            --base "${{ env.BASE_BRANCH }}" \
+            --label "$LABEL" || echo "PR creation skipped (label may not exist)"
