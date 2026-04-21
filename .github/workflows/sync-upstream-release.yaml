@@ -26,11 +26,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Fetch upstream tags
-        run: |
-          git remote add upstream https://github.com/${{ env.UPSTREAM_REPO }}.git
-          git fetch upstream --tags
-
       - name: Get latest release tag
         id: release
         env:
@@ -49,7 +44,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.release.outputs.tag }}"
-          # Check if a branch for this tag already exists
           BRANCH_EXISTS=$(git ls-remote --exit-code origin "refs/heads/upstream/$TAG" > /dev/null 2>&1 && echo "true" || echo "false")
           CONFLICT_BRANCH_EXISTS=$(git ls-remote --exit-code origin "refs/heads/upstream/${TAG}-conflict" > /dev/null 2>&1 && echo "true" || echo "false")
           if [ "$BRANCH_EXISTS" = "true" ] || [ "$CONFLICT_BRANCH_EXISTS" = "true" ]; then
@@ -64,21 +58,25 @@ jobs:
         if: steps.idempotency.outputs.skip == 'false'
         run: |
           TAG="${{ steps.release.outputs.tag }}"
-          git checkout -B "upstream/$TAG" "upstream/$TAG"
+          git remote add upstream https://github.com/${{ env.UPSTREAM_REPO }}.git
+          git fetch upstream "refs/tags/$TAG:refs/tags/$TAG"
+          git checkout -B "upstream/$TAG" "refs/tags/$TAG"
 
           git checkout "${{ env.BASE_BRANCH }}"
-          if git merge --no-commit --no-ff "upstream/$TAG" > /dev/null 2>&1; then
-            git merge --abort
+          if git merge-base --is-ancestor "upstream/$TAG" HEAD; then
+            echo "status=up-to-date" >> $GITHUB_OUTPUT
+            echo "Tag $TAG is already fully contained in ${{ env.BASE_BRANCH }}. Nothing to merge."
+          elif git merge --no-commit --no-ff "upstream/$TAG" > /dev/null 2>&1; then
             echo "status=clean" >> $GITHUB_OUTPUT
             echo "Branch merges cleanly into ${{ env.BASE_BRANCH }}."
           else
-            git merge --abort
             echo "status=conflict" >> $GITHUB_OUTPUT
             echo "Branch has merge conflicts into ${{ env.BASE_BRANCH }}."
           fi
+          git merge --abort 2>/dev/null || true
 
       - name: Push branch
-        if: steps.idempotency.outputs.skip == 'false'
+        if: steps.idempotency.outputs.skip == 'false' && steps.check.outputs.status != 'up-to-date'
         run: |
           TAG="${{ steps.release.outputs.tag }}"
           if [ "${{ steps.check.outputs.status }}" = "clean" ]; then
@@ -89,7 +87,7 @@ jobs:
           git push origin "upstream/$TAG":"$TARGET_BRANCH"
 
       - name: Create Pull Request
-        if: steps.idempotency.outputs.skip == 'false'
+        if: steps.idempotency.outputs.skip == 'false' && steps.check.outputs.status != 'up-to-date'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
