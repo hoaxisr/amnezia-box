@@ -2,6 +2,10 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.10
+
+* Fix process searcher failure introduced in 1.13.9
+
 #### 1.13.9
 
 * Fixes and improvements
