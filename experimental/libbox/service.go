@@ -29,6 +29,7 @@ type platformInterfaceWrapper struct {
 	useProcFS              bool
 	networkManager         adapter.NetworkManager
 	myTunName              string
+	myTunAddress           []netip.Addr
 	defaultInterfaceAccess sync.Mutex
 	defaultInterface       *control.Interface
 	isExpensive            bool
@@ -78,7 +79,23 @@ func (w *platformInterfaceWrapper) OpenInterface(options *tun.Options, platformO
 	}
 	options.FileDescriptor = dupFd
 	w.myTunName = options.Name
+	w.myTunAddress = myTunAddress(options)
 	return tun.New(*options)
+}
+
+func myTunAddress(options *tun.Options) []netip.Addr {
+	addresses := make([]netip.Addr, 0, len(options.Inet4Address)+len(options.Inet6Address))
+	for _, prefix := range options.Inet4Address {
+		addresses = append(addresses, prefix.Addr())
+	}
+	for _, prefix := range options.Inet6Address {
+		addresses = append(addresses, prefix.Addr())
+	}
+	return addresses
+}
+
+func (w *platformInterfaceWrapper) MyInterfaceAddress() []netip.Addr {
+	return w.myTunAddress
 }
 
 func (w *platformInterfaceWrapper) UsePlatformDefaultInterfaceMonitor() bool {
