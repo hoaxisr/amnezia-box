@@ -1,8 +1,8 @@
-# hc-amnezia-box
+# hc-box
 
 Fork of [sing-box](https://github.com/SagerNet/sing-box) with [AmneziaWG](https://docs.amnezia.org/documentation/amnezia-wg/) (AWG) support.
 
-> This is a fork of a fork a fork: sing-box → [amnezia-vpn/sing-box](https://github.com/amnezia-vpn/sing-box) → [hoaxisr/amnezia-box](https://github.com/hoaxisr/amnezia-box) -> hc-amnezia-box
+> This is a fork of a fork a fork: sing-box → [amnezia-vpn/sing-box](https://github.com/amnezia-vpn/sing-box) → [hoaxisr/amnezia-box](https://github.com/hoaxisr/amnezia-box) -> hc-box
 
 This fork is made for personal purposes only! It just adds support for some additional build platforms.
 

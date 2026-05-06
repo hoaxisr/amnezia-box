@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <!-- App -->
-    <string name="app_name" translatable="false">hc-amnezia-box</string>
+    <string name="app_name" translatable="false">hc-box</string>
     <string name="app_version_title">應用程式版本</string>
     <string name="language">語言</string>
     <string name="system_default">跟隨系統</string>
@@ -257,10 +257,10 @@
     <string name="background_permission_description">請授予必要權限，讓 VPN 可以正常運作。\n\n若您使用的是中國廠商裝置，授權後此提示卡片可能仍會顯示。</string>
     <string name="request_background_permission">忽略電池最佳化</string>
     <string name="location_permission_title">位置權限</string>
-    <string name="location_permission_description">您的設定檔包含 &lt;strong&gt;&lt;tt&gt;wifi_ssid&lt;/tt&gt; 或 &lt;tt&gt;wifi_bssid&lt;/tt&gt; 路由規則&lt;/strong&gt;。為了使它們正常工作，hc-amnezia-box 在&lt;strong&gt;背景&lt;/strong&gt;使用 &lt;strong&gt;位置&lt;/strong&gt; 權限來取得已連線 Wi-Fi 網路資訊。這些資訊將&lt;strong&gt;僅用於路由&lt;/strong&gt;。</string>
+    <string name="location_permission_description">您的設定檔包含 &lt;strong&gt;&lt;tt&gt;wifi_ssid&lt;/tt&gt; 或 &lt;tt&gt;wifi_bssid&lt;/tt&gt; 路由規則&lt;/strong&gt;。為了使它們正常工作，hc-box 在&lt;strong&gt;背景&lt;/strong&gt;使用 &lt;strong&gt;位置&lt;/strong&gt; 權限來取得已連線 Wi-Fi 網路資訊。這些資訊將&lt;strong&gt;僅用於路由&lt;/strong&gt;。</string>
     <string name="location_permission_background_description">在 Android 10 及更高版本中，需要&lt;strong&gt;背景位置&lt;/strong&gt;權限。選擇&lt;strong&gt;始終允許&lt;/strong&gt;以授予權限。</string>
     <string name="notification_permission_title">通知權限</string>
-    <string name="notification_permission_required_description">若未授予通知權限，hc-amnezia-box 無法顯示即時網速。請先授權，或關閉即時網速通知後再啟動服務。</string>
+    <string name="notification_permission_required_description">若未授予通知權限，hc-box 無法顯示即時網速。請先授權，或關閉即時網速通知後再啟動服務。</string>
     <string name="root_access_required">需要 Root 權限</string>
     <string name="root_access_denied">Root 權限被拒絕</string>
 
@@ -350,7 +350,7 @@
     <string name="error_empty_configuration">設定為空</string>
     <string name="error_empty_file">空檔案</string>
     <string name="error_decode_profile">解碼設定檔失敗：%s</string>
-    <string name="error_invalid_configuration">無效的 hc-amnezia-box 設定：%s</string>
+    <string name="error_invalid_configuration">無效的 hc-box 設定：%s</string>
     <string name="error_start_command_server">啟動命令伺服器</string>
     <string name="error_create_service">建立服務</string>
     <string name="error_start_service">啟動服務</string>
@@ -424,7 +424,7 @@
     <string name="content_description_search_logs">搜尋日誌</string>
 
     <!-- Xposed Module -->
-    <string name="xposed_description">hc-amnezia-box 的特權強化</string>
+    <string name="xposed_description">hc-box 的特權強化</string>
     <!-- Privileged Enhancement -->
     <string name="privilege_settings">特權強化</string>
     <string name="privilege_module_title">特權模組</string>

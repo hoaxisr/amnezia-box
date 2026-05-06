@@ -70,7 +70,7 @@ apk mkpkg \
   --info "description:Unofficial fork of sing-box with custom with AmneziaWG 2.0 support" \
   --info "arch:${ARCHITECTURE}" \
   --info "license:GPL-3.0-or-later" \
-  --info "origin:hc-amnezia-box" \
+  --info "origin:hc-box" \
   --info "url:https://sing-box.sagernet.org/" \
   --info "maintainer:hungcabinet <hungarian.cabinet@gmail.com>" \
   --info "depends:ca-bundle kmod-inet-diag kmod-tun firewall4 kmod-nft-queue" \

@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <!-- App -->
-    <string name="app_name" translatable="false">hc-amnezia-box</string>
+    <string name="app_name" translatable="false">hc-box</string>
     <string name="app_version_title">نسخه برنامه</string>
     <string name="language">زبان</string>
     <string name="system_default">پیش‌فرض سیستم</string>
@@ -255,10 +255,10 @@
     <string name="background_permission_description">برای کارکرد صحیح VPN، مجوزهای لازم را اعطا کنید.\n\nاگر از دستگاهی ساخت شرکت‌های چینی استفاده می‌کنید، ممکن است این کارت بعد از اعطای مجوز ناپدید نشود.</string>
     <string name="request_background_permission">نادیده گرفتن</string>
     <string name="location_permission_title">مجوز موقعیت مکانی</string>
-    <string name="location_permission_description">پروفایل شما شامل قوانین مسیریابی &lt;strong&gt;&lt;tt&gt;wifi_ssid&lt;/tt&gt; یا &lt;tt&gt;wifi_bssid&lt;/tt&gt;&lt;/strong&gt; است. برای کارکرد آن‌ها، hc-amnezia-box از مجوز &lt;strong&gt;موقعیت مکانی&lt;/strong&gt; &lt;strong&gt;در پس‌زمینه&lt;/strong&gt; برای دریافت اطلاعات شبکه Wi-Fi متصل استفاده می‌کند. این اطلاعات &lt;strong&gt;فقط برای مسیریابی&lt;/strong&gt; استفاده می‌شوند.</string>
+    <string name="location_permission_description">پروفایل شما شامل قوانین مسیریابی &lt;strong&gt;&lt;tt&gt;wifi_ssid&lt;/tt&gt; یا &lt;tt&gt;wifi_bssid&lt;/tt&gt;&lt;/strong&gt; است. برای کارکرد آن‌ها، hc-box از مجوز &lt;strong&gt;موقعیت مکانی&lt;/strong&gt; &lt;strong&gt;در پس‌زمینه&lt;/strong&gt; برای دریافت اطلاعات شبکه Wi-Fi متصل استفاده می‌کند. این اطلاعات &lt;strong&gt;فقط برای مسیریابی&lt;/strong&gt; استفاده می‌شوند.</string>
     <string name="location_permission_background_description">در Android 10 و بالاتر، مجوز &lt;strong&gt;موقعیت مکانی پس‌زمینه&lt;/strong&gt; لازم است. برای اعطای مجوز، گزینه &lt;strong&gt;اجازه دائمی&lt;/strong&gt; را انتخاب کنید.</string>
     <string name="notification_permission_title">مجوز اعلان</string>
-    <string name="notification_permission_required_description">بدون مجوز اعلان، hc-amnezia-box نمی‌تواند سرعت لحظه‌ای شبکه را نمایش دهد. لطفا پیش از شروع سرویس، مجوز را بدهید یا اعلان سرعت لحظه‌ای شبکه را غیرفعال کنید.</string>
+    <string name="notification_permission_required_description">بدون مجوز اعلان، hc-box نمی‌تواند سرعت لحظه‌ای شبکه را نمایش دهد. لطفا پیش از شروع سرویس، مجوز را بدهید یا اعلان سرعت لحظه‌ای شبکه را غیرفعال کنید.</string>
     <string name="root_access_required">دسترسی Root لازم است</string>
     <string name="root_access_denied">دسترسی Root رد شد</string>
 
@@ -332,7 +332,7 @@
     <string name="error_empty_configuration">پیکربندی خالی است</string>
     <string name="error_empty_file">فایل خالی است</string>
     <string name="error_decode_profile">بازگشایی پروفایل ناموفق بود: %s</string>
-    <string name="error_invalid_configuration">پیکربندی hc-amnezia-box نامعتبر است: %s</string>
+    <string name="error_invalid_configuration">پیکربندی hc-box نامعتبر است: %s</string>
     <string name="error_start_command_server">شروع سرور فرمان</string>
     <string name="error_create_service">ایجاد سرویس</string>
     <string name="error_start_service">شروع سرویس</string>
@@ -406,7 +406,7 @@
     <string name="content_description_search_logs">جستجوی لاگ‌ها</string>
 
     <!-- Xposed Module -->
-    <string name="xposed_description">بهبود دسترسی ویژه برای hc-amnezia-box</string>
+    <string name="xposed_description">بهبود دسترسی ویژه برای hc-box</string>
 
     <!-- Privileged Enhancement -->
     <string name="privilege_module_title">ماژول‌های دسترسی ویژه</string>

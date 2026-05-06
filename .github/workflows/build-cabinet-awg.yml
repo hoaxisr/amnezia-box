@@ -509,8 +509,8 @@ jobs:
           ./gradlew clean
           cd ../..
         env:
-          APP_ID: com.hungcabinet.amnezia.box
-          APP_NAME: hc-amnezia-box
+          APP_ID: com.hungcabinet.box
+          APP_NAME: hc-box
       - name: Setup Go
         uses: actions/setup-go@v5
         with:

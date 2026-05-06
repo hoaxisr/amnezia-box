@@ -67,7 +67,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.hungcabinet.amnezia.box"
+        applicationId = "com.hungcabinet.box"
         minSdk = 21
         targetSdk = 35
         versionCode = getVersionProps("VERSION_CODE").toInt()
