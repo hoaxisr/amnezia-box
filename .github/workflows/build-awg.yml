@@ -30,6 +30,9 @@ jobs:
           - name: entware-aarch64
             goos: linux
             goarch: arm64
+          - name: windows-amd64
+            goos: windows
+            goarch: amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +42,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: ^1.24
+          go-version: ^1.25.3
 
       - name: Vendor dependencies and apply patches
         run: |
@@ -55,11 +58,13 @@ jobs:
         run: |
           mkdir -p dist
           OUTPUT_NAME="sing-box-${{ inputs.version }}-awg2.0-${{ matrix.name }}"
+          EXT=""
+          if [ "${{ matrix.goos }}" = "windows" ]; then EXT=".exe"; fi
 
           CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} GOMIPS=${{ matrix.gomips }} \
-          go build -v -trimpath -o "dist/${OUTPUT_NAME}" \
-            -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_awg,badlinkname,tfogo_checklinkname0" \
-            -ldflags "-s -w -buildid= -checklinkname=0 -X internal/godebug.defaultGODEBUG=multipathtcp=0 -X github.com/sagernet/sing-box/constant.Version=${{ inputs.version }}-awg2.0" \
+          go build -v -trimpath -o "dist/${OUTPUT_NAME}${EXT}" \
+            -tags "with_gvisor,with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_v2ray_api,with_awg" \
+            -ldflags "-s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=${{ inputs.version }}-awg2.0" \
             ./cmd/sing-box
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,6 +110,7 @@ jobs:
           - linux-amd64
           - entware-mipsel (softfloat)
           - entware-aarch64
+          - windows-amd64
           EOF
 
           # Create release
