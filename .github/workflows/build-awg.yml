@@ -63,6 +63,12 @@ jobs:
           git -C ~/cronet-go checkout FETCH_HEAD
           git -C ~/cronet-go submodule update --init --recursive --depth=1
 
+      - name: Restore cronet-go headers in vendor tree
+        if: matrix.naive
+        run: |
+          set -xeuo pipefail
+          cp -r ~/cronet-go/include vendor/github.com/sagernet/cronet-go/
+
       - name: Regenerate Debian keyring
         if: matrix.naive
         run: |
