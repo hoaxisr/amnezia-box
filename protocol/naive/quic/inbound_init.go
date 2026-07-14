@@ -124,4 +124,5 @@ func init() {
 
 		return quicListener, nil
 	}
+	naive.WrapError = qtls.WrapError
 }

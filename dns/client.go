@@ -70,10 +70,7 @@ func NewClient(options ClientOptions) *Client {
 	if client.timeout == 0 {
 		client.timeout = C.DNSTimeout
 	}
-	cacheCapacity := options.CacheCapacity
-	if cacheCapacity < 1024 {
-		cacheCapacity = 1024
-	}
+	cacheCapacity := max(options.CacheCapacity, 1024)
 	if !client.disableCache {
 		if !client.independentCache {
 			client.cache = common.Must1(freelru.NewSharded[dns.Question, *dns.Msg](cacheCapacity, maphash.NewHasher[dns.Question]().Hash32))
@@ -283,6 +280,9 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 	if timeToLive == 0 {
 		for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 			for _, record := range recordList {
+				if record.Header().Rrtype == dns.TypeOPT {
+					continue
+				}
 				if timeToLive == 0 || record.Header().Ttl > 0 && record.Header().Ttl < timeToLive {
 					timeToLive = record.Header().Ttl
 				}
@@ -294,6 +294,9 @@ func (c *Client) Exchange(ctx context.Context, transport adapter.DNSTransport, m
 	}
 	for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 		for _, record := range recordList {
+			if record.Header().Rrtype == dns.TypeOPT {
+				continue
+			}
 			record.Header().Ttl = timeToLive
 		}
 	}
@@ -328,9 +331,10 @@ func (c *Client) Lookup(ctx context.Context, transport adapter.DNSTransport, dom
 	if options.LookupStrategy != C.DomainStrategyAsIS {
 		lookupOptions.Strategy = strategy
 	}
-	if strategy == C.DomainStrategyIPv4Only {
+	switch strategy {
+	case C.DomainStrategyIPv4Only:
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeA, lookupOptions, responseChecker)
-	} else if strategy == C.DomainStrategyIPv6Only {
+	case C.DomainStrategyIPv6Only:
 		return c.lookupToExchange(ctx, transport, dnsName, dns.TypeAAAA, lookupOptions, responseChecker)
 	}
 	var response4 []netip.Addr
@@ -381,21 +385,21 @@ func (c *Client) storeCache(transport adapter.DNSTransport, question dns.Questio
 	}
 	if c.disableExpire {
 		if !c.independentCache {
-			c.cache.Add(question, message)
+			c.cache.Add(question, message.Copy())
 		} else {
 			c.transportCache.Add(transportCacheKey{
 				Question:     question,
 				transportTag: transport.Tag(),
-			}, message)
+			}, message.Copy())
 		}
 	} else {
 		if !c.independentCache {
-			c.cache.AddWithLifetime(question, message, time.Second*time.Duration(timeToLive))
+			c.cache.AddWithLifetime(question, message.Copy(), time.Second*time.Duration(timeToLive))
 		} else {
 			c.transportCache.AddWithLifetime(transportCacheKey{
 				Question:     question,
 				transportTag: transport.Tag(),
-			}, message, time.Second*time.Duration(timeToLive))
+			}, message.Copy(), time.Second*time.Duration(timeToLive))
 		}
 	}
 }
@@ -486,26 +490,32 @@ func (c *Client) loadResponse(question dns.Question, transport adapter.DNSTransp
 		var originTTL int
 		for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 			for _, record := range recordList {
+				if record.Header().Rrtype == dns.TypeOPT {
+					continue
+				}
 				if originTTL == 0 || record.Header().Ttl > 0 && int(record.Header().Ttl) < originTTL {
 					originTTL = int(record.Header().Ttl)
 				}
 			}
 		}
-		nowTTL := int(expireAt.Sub(timeNow).Seconds())
-		if nowTTL < 0 {
-			nowTTL = 0
-		}
+		nowTTL := max(int(expireAt.Sub(timeNow).Seconds()), 0)
 		response = response.Copy()
 		if originTTL > 0 {
 			duration := uint32(originTTL - nowTTL)
 			for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 				for _, record := range recordList {
+					if record.Header().Rrtype == dns.TypeOPT {
+						continue
+					}
 					record.Header().Ttl = record.Header().Ttl - duration
 				}
 			}
 		} else {
 			for _, recordList := range [][]dns.RR{response.Answer, response.Ns, response.Extra} {
 				for _, record := range recordList {
+					if record.Header().Rrtype == dns.TypeOPT {
+						continue
+					}
 					record.Header().Ttl = uint32(nowTTL)
 				}
 			}
@@ -534,18 +544,6 @@ func MessageToAddresses(response *dns.Msg) []netip.Addr {
 		}
 	}
 	return addresses
-}
-
-func wrapError(err error) error {
-	switch dnsErr := err.(type) {
-	case *net.DNSError:
-		if dnsErr.IsNotFound {
-			return RcodeNameError
-		}
-	case *net.AddrError:
-		return RcodeNameError
-	}
-	return err
 }
 
 type transportKey struct{}

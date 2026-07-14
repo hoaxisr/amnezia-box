@@ -136,18 +136,16 @@ func (d *DefaultDialer) dialParallelInterfaceFastFallback(ctx context.Context, d
 		go startRacer(fallbackCtx, false, iif)
 	}
 	var errors []error
-	for {
-		select {
-		case res := <-results:
-			if res.error == nil {
-				return res.Conn, res.primary, nil
-			}
-			errors = append(errors, res.error)
-			if len(errors) == len(primaryInterfaces)+len(fallbackInterfaces) {
-				return nil, false, E.Errors(errors...)
-			}
+	for res := range results {
+		if res.error == nil {
+			return res.Conn, res.primary, nil
+		}
+		errors = append(errors, res.error)
+		if len(errors) == len(primaryInterfaces)+len(fallbackInterfaces) {
+			return nil, false, E.Errors(errors...)
 		}
 	}
+	return nil, false, E.Errors(errors...)
 }
 
 func (d *DefaultDialer) listenSerialInterfacePacket(ctx context.Context, listener net.ListenConfig, network string, addr string, strategy C.NetworkStrategy, interfaceType []C.InterfaceType, fallbackInterfaceType []C.InterfaceType, fallbackDelay time.Duration) (net.PacketConn, error) {
@@ -184,6 +182,12 @@ func (d *DefaultDialer) listenSerialInterfacePacket(ctx context.Context, listene
 
 func selectInterfaces(networkManager adapter.NetworkManager, strategy C.NetworkStrategy, interfaceType []C.InterfaceType, fallbackInterfaceType []C.InterfaceType) (primaryInterfaces []adapter.NetworkInterface, fallbackInterfaces []adapter.NetworkInterface) {
 	interfaces := networkManager.NetworkInterfaces()
+	myInterfaces := networkManager.InterfaceMonitor().MyInterfaces()
+	if len(myInterfaces) > 0 {
+		interfaces = common.Filter(interfaces, func(it adapter.NetworkInterface) bool {
+			return !common.Contains(myInterfaces, it.Name)
+		})
+	}
 	switch strategy {
 	case C.NetworkStrategyDefault:
 		if len(interfaceType) == 0 {

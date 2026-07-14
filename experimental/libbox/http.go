@@ -52,6 +52,11 @@ type HTTPRequest interface {
 type HTTPResponse interface {
 	GetContent() (*StringBox, error)
 	WriteTo(path string) error
+	WriteToWithProgress(path string, handler HTTPResponseWriteToProgressHandler) error
+}
+
+type HTTPResponseWriteToProgressHandler interface {
+	Update(progress int64, total int64)
 }
 
 var (
@@ -238,4 +243,32 @@ func (h *httpResponse) WriteTo(path string) error {
 	}
 	defer file.Close()
 	return common.Error(bufio.Copy(file, h.Body))
+}
+
+func (h *httpResponse) WriteToWithProgress(path string, handler HTTPResponseWriteToProgressHandler) error {
+	defer h.Body.Close()
+	file, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	return common.Error(bufio.Copy(&progressWriter{
+		writer:  file,
+		handler: handler,
+		total:   h.ContentLength,
+	}, h.Body))
+}
+
+type progressWriter struct {
+	writer  io.Writer
+	handler HTTPResponseWriteToProgressHandler
+	total   int64
+	written int64
+}
+
+func (w *progressWriter) Write(p []byte) (int, error) {
+	n, err := w.writer.Write(p)
+	w.written += int64(n)
+	w.handler.Update(w.written, w.total)
+	return n, err
 }

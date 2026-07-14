@@ -2,6 +2,46 @@
 icon: material/alert-decagram
 ---
 
+#### 1.13.13
+
+* Fixes and improvements
+
+#### 1.13.12
+
+* Update naiveproxy to v148.0.7778.96-1
+* Fixes and improvements
+
+#### 1.13.11
+
+* Fix process searcher failure introduced in 1.13.9
+* Fixes and improvements
+
+#### 1.13.10
+
+* Fix process searcher failure introduced in 1.13.9
+
+#### 1.13.9
+
+* Fixes and improvements
+
+#### 1.13.8
+
+* Update naiveproxy to v147.0.7727.49-1
+* Fix fake-ip DNS server should return SUCCESS when address type is not configured
+* Fixes and improvements
+
+#### 1.13.7
+
+* Fixes and improvements
+
+#### 1.13.6
+
+* Fixes and improvements
+
+#### 1.13.5
+
+* Fixes and improvements
+
 #### 1.13.4
 
 * Fixes and improvements
