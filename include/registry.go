@@ -26,6 +26,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/group"
 	"github.com/sagernet/sing-box/protocol/http"
 	"github.com/sagernet/sing-box/protocol/masque"
+	"github.com/sagernet/sing-box/protocol/mieru"
 	"github.com/sagernet/sing-box/protocol/mixed"
 	"github.com/sagernet/sing-box/protocol/naive"
 	"github.com/sagernet/sing-box/protocol/redirect"
@@ -61,6 +62,7 @@ func InboundRegistry() *inbound.Registry {
 	socks.RegisterInbound(registry)
 	http.RegisterInbound(registry)
 	mixed.RegisterInbound(registry)
+	mieru.RegisterInbound(registry)
 
 	shadowsocks.RegisterInbound(registry)
 	snell.RegisterInbound(registry)
@@ -92,6 +94,7 @@ func OutboundRegistry() *outbound.Registry {
 
 	socks.RegisterOutbound(registry)
 	http.RegisterOutbound(registry)
+	mieru.RegisterOutbound(registry)
 	shadowsocks.RegisterOutbound(registry)
 	snell.RegisterOutbound(registry)
 	vmess.RegisterOutbound(registry)
@@ -114,6 +117,7 @@ func EndpointRegistry() *endpoint.Registry {
 	registry := endpoint.NewRegistry()
 
 	registerWireGuardEndpoint(registry)
+	registerAwgEndpoint(registry)
 	registerOpenConnectEndpoint(registry)
 	registerOpenVPNEndpoints(registry)
 	masque.RegisterEndpoint(registry)
