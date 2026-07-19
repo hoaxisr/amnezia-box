@@ -69,8 +69,9 @@ jobs:
       - name: Build sing-box (${{ matrix.arch }})
         run: |
           set -euo pipefail
-          VERSION="$(sed -n 's/.*Version = "\(.*\)".*/\1/p' constant/version.go 2>/dev/null | head -1)"
-          [ -n "$VERSION" ] || VERSION="1.14.0-alpha.48-awg"
+          # Версия = release-тег: единое значение для имени ассета, constant.Version
+          # и тега релиза. awg-manager/embedded.go RequiredVersion должен ему совпадать.
+          VERSION="${{ github.event.inputs.release_tag || github.ref_name }}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
 
           if [ "${{ matrix.naive }}" = "true" ]; then
