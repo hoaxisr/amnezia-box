@@ -1,0 +1,137 @@
+package xhttp
+
+import (
+	"context"
+	"crypto/rand"
+	"math"
+	"math/big"
+	"sync"
+	"sync/atomic"
+	"time"
+
+	"github.com/sagernet/sing-box/option"
+)
+
+type XmuxConn interface {
+	Close()
+	IsClosed() bool
+}
+
+type XmuxClient struct {
+	XmuxConn     XmuxConn
+	openUsage    int32
+	leftUsage    int32
+	LeftRequests atomic.Int32
+	UnreusableAt time.Time
+
+	closed bool
+	mtx    sync.Mutex
+}
+
+func (c *XmuxClient) Close() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.closed = true
+	if c.openUsage <= 0 {
+		c.XmuxConn.Close()
+	}
+}
+
+func (c *XmuxClient) AddOpenUsage(delta int32) {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.openUsage += delta
+	if c.closed && c.openUsage <= 0 {
+		c.XmuxConn.Close()
+	}
+}
+
+func (c *XmuxClient) GetOpenUsage() int32 {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	return c.openUsage
+}
+
+type XmuxManager struct {
+	options     option.V2RayXHTTPXmuxOptions
+	concurrency int32
+	connections int32
+	newConnFunc func() XmuxConn
+	xmuxClients []*XmuxClient
+	mtx         sync.Mutex
+}
+
+func NewXmuxManager(options option.V2RayXHTTPXmuxOptions, newConnFunc func() XmuxConn) *XmuxManager {
+	return &XmuxManager{
+		options:     options,
+		concurrency: options.GetNormalizedMaxConcurrency().Rand(),
+		connections: options.GetNormalizedMaxConnections().Rand(),
+		newConnFunc: newConnFunc,
+		xmuxClients: make([]*XmuxClient, 0),
+	}
+}
+
+func (m *XmuxManager) newXmuxClient() *XmuxClient {
+	xmuxClient := &XmuxClient{
+		XmuxConn:  m.newConnFunc(),
+		leftUsage: -1,
+	}
+	if x := m.options.GetNormalizedCMaxReuseTimes().Rand(); x > 0 {
+		xmuxClient.leftUsage = x - 1
+	}
+	xmuxClient.LeftRequests.Store(math.MaxInt32)
+	if x := m.options.GetNormalizedHMaxRequestTimes().Rand(); x > 0 {
+		xmuxClient.LeftRequests.Store(x)
+	}
+	if x := m.options.GetNormalizedHMaxReusableSecs().Rand(); x > 0 {
+		xmuxClient.UnreusableAt = time.Now().Add(time.Duration(x) * time.Second)
+	}
+	m.xmuxClients = append(m.xmuxClients, xmuxClient)
+	return xmuxClient
+}
+
+func (m *XmuxManager) GetXmuxClient(ctx context.Context) *XmuxClient {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	var evicted []*XmuxClient
+	for i := 0; i < len(m.xmuxClients); {
+		xmuxClient := m.xmuxClients[i]
+		if xmuxClient.XmuxConn.IsClosed() ||
+			xmuxClient.leftUsage == 0 ||
+			xmuxClient.LeftRequests.Load() <= 0 ||
+			(xmuxClient.UnreusableAt != time.Time{} && time.Now().After(xmuxClient.UnreusableAt)) {
+			m.xmuxClients = append(m.xmuxClients[:i], m.xmuxClients[i+1:]...)
+			evicted = append(evicted, xmuxClient)
+		} else {
+			i++
+		}
+	}
+	for _, c := range evicted {
+		c.Close()
+	}
+	if len(m.xmuxClients) == 0 {
+		return m.newXmuxClient()
+	}
+	if m.connections > 0 && len(m.xmuxClients) < int(m.connections) {
+		return m.newXmuxClient()
+	}
+	xmuxClients := make([]*XmuxClient, 0)
+	if m.concurrency > 0 {
+		for _, xmuxClient := range m.xmuxClients {
+			if xmuxClient.GetOpenUsage() < m.concurrency {
+				xmuxClients = append(xmuxClients, xmuxClient)
+			}
+		}
+	} else {
+		xmuxClients = m.xmuxClients
+	}
+	if len(xmuxClients) == 0 {
+		return m.newXmuxClient()
+	}
+	i, _ := rand.Int(rand.Reader, big.NewInt(int64(len(xmuxClients))))
+	xmuxClient := xmuxClients[i.Int64()]
+	if xmuxClient.leftUsage > 0 {
+		xmuxClient.leftUsage -= 1
+	}
+	return xmuxClient
+}
