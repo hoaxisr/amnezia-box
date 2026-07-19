@@ -1,0 +1,120 @@
+# Собирает наш sing-box (AmneziaWG/AWG3 + mieru + xhttp) под Entware-арки awg-manager
+# и публикует бинари + .sha256 как release-ассеты. awg-manager/routebox их ПОТРЕБЛЯЮТ
+# (embedded.go → этот release), не пересобирают. Build-логика перенесена из
+# awg-manager/scripts/build-singbox.sh (проверена локально на mips-3.4).
+#
+# Запуск: workflow_dispatch (ручной) или push тега awg-v*.
+name: release-entware
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag (напр. awg-1.14.0-alpha.48-1)"
+        required: true
+  push:
+    tags:
+      - "awg-v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: mipsel-3.4
+            goarch: mipsle
+            gomips: softfloat
+            naive: true
+          - arch: mips-3.4
+            goarch: mips
+            gomips: softfloat
+            naive: false
+          - arch: aarch64-3.10
+            goarch: arm64
+            gomips: ""
+            naive: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.x"
+
+      - name: Install deps
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git ca-certificates gnupg curl file xz-utils unzip zip python3
+
+      # naive-арки (mipsel/aarch64) требуют cronet/musl-тулчейн (with_naive_outbound).
+      - name: Setup naive toolchain
+        if: matrix.naive == true
+        run: |
+          set -euo pipefail
+          CRONET_REF="$(cat .github/CRONET_GO_VERSION)"
+          git clone --depth=1 https://github.com/sagernet/cronet-go.git "$HOME/cronet-go"
+          git -C "$HOME/cronet-go" fetch --depth=1 origin "$CRONET_REF"
+          git -C "$HOME/cronet-go" checkout --force FETCH_HEAD
+          git -C "$HOME/cronet-go" submodule update --init --recursive --depth=1
+          rm -f "$HOME/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg"
+          ( cd "$HOME/cronet-go" && GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh )
+          ( cd "$HOME/cronet-go" && go run ./cmd/build-naive --target="linux/${{ matrix.goarch }}" --libc=musl download-toolchain )
+
+      - name: Build sing-box (${{ matrix.arch }})
+        run: |
+          set -euo pipefail
+          VERSION="$(sed -n 's/.*Version = "\(.*\)".*/\1/p' constant/version.go 2>/dev/null | head -1)"
+          [ -n "$VERSION" ] || VERSION="1.14.0-alpha.48-awg"
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+          if [ "${{ matrix.naive }}" = "true" ]; then
+            eval "$( cd "$HOME/cronet-go" && go run ./cmd/build-naive --target="linux/${{ matrix.goarch }}" --libc=musl env --export )"
+            TAGS="$(cat release/DEFAULT_BUILD_TAGS),with_musl,with_awg,with_low_memory"
+            CGO=1
+          else
+            TAGS="$(cat release/DEFAULT_BUILD_TAGS_OTHERS),with_awg,with_low_memory"
+            CGO=0
+          fi
+          echo "Build tags: $TAGS"
+
+          OUT="sing-box-${VERSION}-${{ matrix.arch }}"
+          ENVV=(CGO_ENABLED=$CGO GOOS=linux GOARCH=${{ matrix.goarch }})
+          [ -n "${{ matrix.gomips }}" ] && ENVV+=(GOMIPS=${{ matrix.gomips }})
+          env "${ENVV[@]}" go build -v -trimpath \
+            -tags "$TAGS" \
+            -ldflags "-X 'github.com/sagernet/sing-box/constant.Version=$VERSION' $(cat release/LDFLAGS) -s -w -buildid=" \
+            -o "dist/$OUT" ./cmd/sing-box
+          ( cd dist && sha256sum "$OUT" > "$OUT.sha256" )
+          file "dist/$OUT"; ls -lh "dist/$OUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sing-box-${{ matrix.arch }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "$TAG" --notes "sing-box + AmneziaWG(AWG3) + mieru + xhttp — Entware builds" \
+            || gh release upload "$TAG" dist/* --repo "${{ github.repository }}" --clobber
