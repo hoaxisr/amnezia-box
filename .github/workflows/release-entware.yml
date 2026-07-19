@@ -84,7 +84,7 @@ jobs:
           fi
           echo "Build tags: $TAGS"
 
-          OUT="sing-box-${VERSION}-${{ matrix.arch }}"
+          OUT="singbox-${VERSION}-${{ matrix.arch }}"
           ENVV=(CGO_ENABLED=$CGO GOOS=linux GOARCH=${{ matrix.goarch }})
           [ -n "${{ matrix.gomips }}" ] && ENVV+=(GOMIPS=${{ matrix.gomips }})
           env "${ENVV[@]}" go build -v -trimpath \
