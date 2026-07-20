@@ -32,6 +32,21 @@ func newBind(ctx context.Context, dial N.Dialer) conn.Bind {
 }
 
 func (b *bind_adapter) connect(addr netip.Addr, port uint16) (net.PacketConn, error) {
+	// Server mode (listen_port set): bind a real UDP listener on that port so
+	// the endpoint can receive inbound handshakes. The sing-box dialer's
+	// ListenPacket treats the address as a dial destination and binds an
+	// ephemeral local port, which silently breaks responder/server operation
+	// (#awg3-server). Client mode (port==0) keeps the dialer for its routing
+	// features (bind_interface/mark) needed to avoid tunnel routing loops.
+	if port != 0 {
+		// udp4/udp6 (not "udp") so the v6 listener is v6-only and doesn't
+		// conflict with the v4 listener on the same port.
+		network := "udp4"
+		if addr.Is6() {
+			network = "udp6"
+		}
+		return net.ListenUDP(network, &net.UDPAddr{IP: addr.AsSlice(), Port: int(port)})
+	}
 	return b.dialer.ListenPacket(b.ctx, M.Socksaddr{Addr: addr, Port: port})
 }
 
