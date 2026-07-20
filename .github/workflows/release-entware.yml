@@ -38,6 +38,10 @@ jobs:
             goarch: arm64
             gomips: ""
             naive: true
+          - arch: linux-amd64        # для routebox (VPS)
+            goarch: amd64
+            gomips: ""
+            naive: true
     steps:
       - uses: actions/checkout@v4
 
