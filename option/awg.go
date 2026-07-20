@@ -30,7 +30,7 @@ type AwgEndpointOptions struct {
 	I5               string                           `json:"i5,omitempty"`
 
 	HeaderProtectionKey    string `json:"header_protection_key,omitempty"`
-	ContentPaddingMultiple string `json:"content_padding_multiple,omitempty"`
+	ContentPaddingAddition string `json:"content_padding_addition,omitempty"`
 	RekeyAfterTime         string `json:"rekey_after_time,omitempty"`
 
 	Peers []AwgPeerOptions `json:"peers,omitempty"`
