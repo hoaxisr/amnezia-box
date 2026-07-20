@@ -203,4 +203,4 @@ require (
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
 
-replace github.com/amnezia-vpn/amneziawg-go => github.com/hoaxisr/amneziawg-go v0.2.20-0.20260719193519-0b0471b313d0
+replace github.com/amnezia-vpn/amneziawg-go => github.com/hoaxisr/amneziawg-go v0.2.20-0.20260720130913-1dad0fd3d6ef
