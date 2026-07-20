@@ -213,8 +213,8 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 		}
 		s += "\nheader_protection_key=" + hex.EncodeToString(headerProtectionKeyBytes)
 	}
-	if opts.ContentPaddingMultiple != "" {
-		s += "\ncontent_padding_multiple=" + opts.ContentPaddingMultiple
+	if opts.ContentPaddingAddition != "" {
+		s += "\ncontent_padding_addition=" + opts.ContentPaddingAddition
 	}
 	if opts.RekeyAfterTime != "" {
 		s += "\nrekey_after_time=" + opts.RekeyAfterTime
