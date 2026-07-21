@@ -203,8 +203,8 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 
 	if opts.HeaderProtectionKey != "" {
 		for i, padding := range []int{opts.S1, opts.S2, opts.S3, opts.S4} {
-			if padding < 8 {
-				return "", E.New("s", i+1, " must be at least 8 when header_protection_key is set")
+			if padding < 12 {
+				return "", E.New("s", i+1, " must be at least 12 when header_protection_key is set")
 			}
 		}
 		headerProtectionKeyBytes, err := base64.StdEncoding.DecodeString(opts.HeaderProtectionKey)
