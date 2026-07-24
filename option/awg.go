@@ -32,6 +32,10 @@ type AwgEndpointOptions struct {
 	HeaderProtectionKey    string `json:"header_protection_key,omitempty"`
 	ContentPaddingAddition string `json:"content_padding_addition,omitempty"`
 	RekeyAfterTime         string `json:"rekey_after_time,omitempty"`
+	RekeyTimeout           string `json:"rekey_timeout,omitempty"`
+	RejectAfterTime        string `json:"reject_after_time,omitempty"`
+	KeepaliveTimeout       string `json:"keepalive_timeout,omitempty"`
+	MaxHandshakeAttempts   string `json:"max_handshake_attempts,omitempty"`
 
 	Peers []AwgPeerOptions `json:"peers,omitempty"`
 	DialerOptions
