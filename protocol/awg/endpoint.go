@@ -219,6 +219,18 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 	if opts.RekeyAfterTime != "" {
 		s += "\nrekey_after_time=" + opts.RekeyAfterTime
 	}
+	if opts.RekeyTimeout != "" {
+		s += "\nrekey_timeout=" + opts.RekeyTimeout
+	}
+	if opts.RejectAfterTime != "" {
+		s += "\nreject_after_time=" + opts.RejectAfterTime
+	}
+	if opts.KeepaliveTimeout != "" {
+		s += "\nkeepalive_timeout=" + opts.KeepaliveTimeout
+	}
+	if opts.MaxHandshakeAttempts != "" {
+		s += "\nmax_handshake_attempts=" + opts.MaxHandshakeAttempts
+	}
 
 	for _, peer := range opts.Peers {
 		publicKeyBytes, err := base64.StdEncoding.DecodeString(peer.PublicKey)
