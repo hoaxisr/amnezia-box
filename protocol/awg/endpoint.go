@@ -259,7 +259,9 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 				}
 				endpointAddr = resolvedAddr.String()
 			}
-			s += "\nendpoint=" + endpointAddr + ":" + format.ToString(peer.Port)
+			// net.JoinHostPort оборачивает IPv6-литерал в скобки ([::1]:port);
+			// без этого endpoint=::1:51820 — невалидный UAPI-адрес для wireguard-go.
+			s += "\nendpoint=" + net.JoinHostPort(endpointAddr, format.ToString(peer.Port))
 		}
 		if peer.PersistentKeepaliveInterval != 0 {
 			s += "\npersistent_keepalive_interval=" + format.ToString(peer.PersistentKeepaliveInterval)
