@@ -275,14 +275,23 @@ func buildMieruServerConfig(_ context.Context, options option.MieruInboundOption
 		transportProtocol = mierupb.TransportProtocol_UDP.Enum()
 	}
 
-	if options.ListenOptions.ListenPort == 0 {
-		return nil, nil, E.New("listen_port must be set")
+	if options.ListenOptions.ListenPort == 0 && len(options.ListenPortRanges) == 0 {
+		return nil, nil, E.New("either listen_port or listen_ports must be set")
 	}
-	portBindings := []*mierupb.PortBinding{
-		{
+	var portBindings []*mierupb.PortBinding
+	if options.ListenOptions.ListenPort != 0 {
+		portBindings = append(portBindings, &mierupb.PortBinding{
 			Port:     proto.Int32(int32(options.ListenOptions.ListenPort)),
 			Protocol: transportProtocol,
-		},
+		})
+	}
+	// Mirrors the outbound's server_ports: one binding per range, so a client
+	// rotating across the range always finds the server listening.
+	for _, pr := range options.ListenPortRanges {
+		portBindings = append(portBindings, &mierupb.PortBinding{
+			PortRange: proto.String(pr),
+			Protocol:  transportProtocol,
+		})
 	}
 
 	var users []*mierupb.User
@@ -315,6 +324,25 @@ func buildMieruServerConfig(_ context.Context, options option.MieruInboundOption
 func validateMieruInboundOptions(options option.MieruInboundOptions) error {
 	if options.Transport != "TCP" && options.Transport != "UDP" {
 		return E.New("transport must be TCP or UDP")
+	}
+	if options.ListenOptions.ListenPort == 0 && len(options.ListenPortRanges) == 0 {
+		return E.New("either listen_port or listen_ports must be set")
+	}
+	// Same bounds the outbound applies to server_ports.
+	for _, pr := range options.ListenPortRanges {
+		begin, end, err := beginAndEndPortFromPortRange(pr)
+		if err != nil {
+			return E.New("invalid listen_ports format")
+		}
+		if begin < 1 || begin > 65535 {
+			return E.New("begin port must be between 1 and 65535")
+		}
+		if end < 1 || end > 65535 {
+			return E.New("end port must be between 1 and 65535")
+		}
+		if begin > end {
+			return E.New("begin port must be less than or equal to end port")
+		}
 	}
 	if len(options.Users) == 0 {
 		return E.New("users is empty")
