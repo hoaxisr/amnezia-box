@@ -48,6 +48,7 @@ type stackTun struct {
 	inet4Address  netip.Addr
 	inet6Address  netip.Addr
 	icmpForwarder *tun.ICMPForwarder
+	udpForwarder  *tun.UDPForwarder
 }
 
 func newNonIntegratedTun(ctx context.Context, address []netip.Prefix, mtu uint32, handler tun.Handler, udpTimeout time.Duration, log logger.ContextLogger) (tunAdapter, error) {
@@ -84,10 +85,12 @@ func newNonIntegratedTun(ctx context.Context, address []netip.Prefix, mtu uint32
 	tunDevice.stack = ipStack
 	if handler != nil {
 		ipStack.SetTransportProtocolHandler(tcp.ProtocolNumber, tun.NewTCPForwarder(ctx, ipStack, handler).HandlePacket)
-		ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, tun.NewUDPForwarder(ctx, ipStack, handler, tun.UDPNatOptions{
+		udpForwarder := tun.NewUDPForwarder(ctx, ipStack, handler, tun.UDPNatOptions{
 			Timeout: udpTimeout,
 			Shared:  true,
-		}).HandlePacket)
+		})
+		ipStack.SetTransportProtocolHandler(udp.ProtocolNumber, udpForwarder.HandlePacket)
+		tunDevice.udpForwarder = udpForwarder
 		icmpForwarder := tun.NewICMPForwarder(ipStack, handler, log)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber4, icmpForwarder.HandlePacket)
 		ipStack.SetTransportProtocolHandler(icmp.ProtocolNumber6, icmpForwarder.HandlePacket)
@@ -163,6 +166,13 @@ func (t *stackTun) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 }
 
 func (t *stackTun) Start() error {
+	// The UDP NAT drops every packet until it is started; TCP and ICMP
+	// forwarders have no such lifecycle.
+	if t.udpForwarder != nil {
+		if err := t.udpForwarder.Start(); err != nil {
+			return err
+		}
+	}
 	t.events <- awgTun.EventUp
 	return nil
 }
@@ -234,6 +244,9 @@ func (t *stackTun) Close() error {
 		close(t.events)
 		if t.icmpForwarder != nil {
 			t.icmpForwarder.Close()
+		}
+		if t.udpForwarder != nil {
+			_ = t.udpForwarder.Close()
 		}
 		t.stack.Close()
 		for _, endpoint := range t.stack.CleanupEndpoints() {
