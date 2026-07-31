@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -16,6 +17,7 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	"github.com/sagernet/sing/service"
 
 	mieruclient "github.com/enfein/mieru/v3/apis/client"
 	mierucommon "github.com/enfein/mieru/v3/apis/common"
@@ -42,7 +44,8 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		return nil, err
 	}
 
-	config, err := buildMieruClientConfig(options, mieruDialer{dialer: outboundDialer})
+	config, err := buildMieruClientConfig(options, mieruDialer{dialer: outboundDialer},
+		mieruResolver{router: service.FromContext[adapter.DNSRouter](ctx)})
 	if err != nil {
 		return nil, fmt.Errorf("failed to build mieru client config: %w", err)
 	}
@@ -134,6 +137,36 @@ var (
 	_ mierucommon.PacketDialer = (*mieruDialer)(nil)
 )
 
+// mieruResolver lets mieru resolve the server domain through sing-box DNS.
+// ClientDNSConfig.BypassDialerDNS only covers the stream underlay; the packet
+// underlay always calls ResolveUDPAddr() with this resolver, so leaving it
+// unset made UDP transport fail on any domain server address.
+type mieruResolver struct {
+	router adapter.DNSRouter
+}
+
+func (r mieruResolver) LookupIP(ctx context.Context, network, host string) ([]net.IP, error) {
+	if r.router == nil {
+		return nil, E.New("dns router is not available")
+	}
+	var strategy C.DomainStrategy
+	switch network {
+	case "ip4":
+		strategy = C.DomainStrategyIPv4Only
+	case "ip6":
+		strategy = C.DomainStrategyIPv6Only
+	}
+	addresses, err := r.router.Lookup(ctx, host, adapter.DNSQueryOptions{Strategy: strategy})
+	if err != nil {
+		return nil, err
+	}
+	return common.Map(addresses, func(it netip.Addr) net.IP {
+		return it.AsSlice()
+	}), nil
+}
+
+var _ mierucommon.DNSResolver = (*mieruResolver)(nil)
+
 // streamer converts a net.PacketConn to a net.Conn.
 type streamer struct {
 	net.PacketConn
@@ -165,7 +198,7 @@ func socksAddrToNetAddrSpec(sa M.Socksaddr, network string) (mierumodel.NetAddrS
 	return nas, nil
 }
 
-func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDialer) (*mieruclient.ClientConfig, error) {
+func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDialer, resolver mieruResolver) (*mieruclient.ClientConfig, error) {
 	if err := validateMieruOptions(options); err != nil {
 		return nil, fmt.Errorf("failed to validate mieru options: %w", err)
 	}
@@ -206,6 +239,7 @@ func buildMieruClientConfig(options option.MieruOutboundOptions, dialer mieruDia
 		},
 		Dialer:       dialer,
 		PacketDialer: dialer,
+		Resolver:     resolver,
 		DNSConfig: &mierucommon.ClientDNSConfig{
 			BypassDialerDNS: true,
 		},
