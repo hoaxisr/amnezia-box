@@ -1,8 +1,12 @@
 package option
 
 import (
+	"encoding/json"
 	"net/netip"
+	"strconv"
+	"strings"
 
+	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json/badoption"
 )
 
@@ -47,5 +51,53 @@ type AwgPeerOptions struct {
 	PublicKey                   string                           `json:"public_key,omitempty"`
 	PresharedKey                string                           `json:"preshared_key,omitempty"`
 	AllowedIPs                  badoption.Listable[netip.Prefix] `json:"allowed_ips,omitempty"`
-	PersistentKeepaliveInterval uint16                           `json:"persistent_keepalive_interval,omitempty"`
+	PersistentKeepaliveInterval AwgKeepalive                     `json:"persistent_keepalive_interval,omitempty"`
+}
+
+// AwgKeepalive is a persistent keepalive interval in seconds. AWG 3.0 made it a
+// range, so a config carries either a plain number or "min-max", and the device
+// draws a fresh value inside the range every time it arms the timer. Configs
+// written before 3.0 hold a JSON number, so both shapes have to unmarshal.
+type AwgKeepalive string
+
+func (k AwgKeepalive) MarshalJSON() ([]byte, error) {
+	return json.Marshal(string(k))
+}
+
+func (k *AwgKeepalive) UnmarshalJSON(data []byte) error {
+	var number uint16
+	if err := json.Unmarshal(data, &number); err == nil {
+		*k = AwgKeepalive(strconv.Itoa(int(number)))
+		return nil
+	}
+	var value string
+	if err := json.Unmarshal(data, &value); err != nil {
+		return E.New("persistent_keepalive_interval: expected a number or a \"min-max\" range")
+	}
+	if err := validateUintRange(value); err != nil {
+		return E.Cause(err, "persistent_keepalive_interval")
+	}
+	*k = AwgKeepalive(value)
+	return nil
+}
+
+// validateUintRange mirrors UintRange.FromString in amneziawg-go, so a broken
+// range is reported while reading the config instead of when the device starts.
+func validateUintRange(value string) error {
+	lo, hi, isRange := strings.Cut(value, "-")
+	loNum, err := strconv.ParseUint(strings.TrimSpace(lo), 10, 16)
+	if err != nil {
+		return E.New("bad lower bound in ", value)
+	}
+	if !isRange {
+		return nil
+	}
+	hiNum, err := strconv.ParseUint(strings.TrimSpace(hi), 10, 16)
+	if err != nil {
+		return E.New("bad upper bound in ", value)
+	}
+	if hiNum < loNum {
+		return E.New("upper bound below lower bound in ", value)
+	}
+	return nil
 }
