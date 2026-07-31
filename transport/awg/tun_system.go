@@ -37,7 +37,9 @@ func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []neti
 	events := make(chan awgTun.Event, 1)
 
 	dial, err := dialer.NewDefault(ctx, option.DialerOptions{
-		BindInterface: name,
+		AbstractDialerOptions: option.AbstractDialerOptions{
+			BindInterface: name,
+		},
 	})
 	if err != nil {
 		return nil, exceptions.Cause(err, "get in-tunnel dialer")
@@ -47,6 +49,9 @@ func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []neti
 		Name: name,
 		GSO:  true,
 		MTU:  uint32(mtu),
+		// The default DNS mode is hijack; this is a transport interface, not the
+		// system tun, so it must not touch DNS (mirrors transport/wireguard).
+		DNSMode: tun.DNSModeDisabled,
 		Inet4Address: common.Filter(address, func(it netip.Prefix) bool {
 			return it.Addr().Is4()
 		}),
