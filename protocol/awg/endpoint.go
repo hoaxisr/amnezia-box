@@ -263,8 +263,8 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 			// без этого endpoint=::1:51820 — невалидный UAPI-адрес для wireguard-go.
 			s += "\nendpoint=" + net.JoinHostPort(endpointAddr, format.ToString(peer.Port))
 		}
-		if peer.PersistentKeepaliveInterval != 0 {
-			s += "\npersistent_keepalive_interval=" + format.ToString(peer.PersistentKeepaliveInterval)
+		if peer.PersistentKeepaliveInterval != "" && peer.PersistentKeepaliveInterval != "0" {
+			s += "\npersistent_keepalive_interval=" + string(peer.PersistentKeepaliveInterval)
 		}
 		for _, allowedIp := range peer.AllowedIPs {
 			s += "\nallowed_ip=" + allowedIp.String()
