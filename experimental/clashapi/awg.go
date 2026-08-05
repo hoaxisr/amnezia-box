@@ -9,7 +9,6 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing/common"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -75,10 +74,9 @@ func getAwgPeers(endpointManager adapter.EndpointManager) func(w http.ResponseWr
 // skipped rather than failing the whole response — a partially-degraded
 // snapshot is more useful to the caller than none.
 func parseAwgUAPIPeers(uapi string) []awgPeerObject {
-	var (
-		peers []awgPeerObject
-		cur   *awgPeerObject
-	)
+	// Non-nil so a device with no peers renders as [] and not null.
+	peers := []awgPeerObject{}
+	var cur *awgPeerObject
 	for _, line := range strings.Split(uapi, "\n") {
 		key, value, ok := strings.Cut(line, "=")
 		if !ok {
@@ -87,7 +85,7 @@ func parseAwgUAPIPeers(uapi string) []awgPeerObject {
 		switch key {
 		case "public_key":
 			raw, err := hex.DecodeString(value)
-			if err != nil {
+			if err != nil || len(raw) == 0 {
 				cur = nil
 				continue
 			}
@@ -110,5 +108,5 @@ func parseAwgUAPIPeers(uapi string) []awgPeerObject {
 			cur.RxBytes, _ = strconv.ParseInt(value, 10, 64)
 		}
 	}
-	return common.Filter(peers, func(p awgPeerObject) bool { return p.PublicKey != "" })
+	return peers
 }
