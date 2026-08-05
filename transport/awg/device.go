@@ -137,6 +137,19 @@ func (d *Device) Lookup(address netip.Addr) *device.Peer {
 	return d.allowedIPs.Lookup(address.AsSlice())
 }
 
+// IpcGet returns the underlying amneziawg-go device's UAPI "get" response —
+// the same per-peer public_key/last_handshake_time_sec/tx_bytes/rx_bytes text
+// wg-quick's "wg show" parses. There is no other way to read this endpoint's
+// handshake state: it never runs as a kernel interface, and sing-box's Clash
+// API connection tracker does not see traffic through it (endpoint, not
+// inbound). Callers (see experimental/clashapi/awg.go) parse this text.
+func (d *Device) IpcGet() (string, error) {
+	if d.awgDevice == nil {
+		return "", E.New("device not started")
+	}
+	return d.awgDevice.IpcGet()
+}
+
 func (d *Device) DialContext(ctx context.Context, network string, destination metadata.Socksaddr) (net.Conn, error) {
 	return d.tun.DialContext(ctx, network, destination)
 }
