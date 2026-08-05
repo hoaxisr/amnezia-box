@@ -143,8 +143,12 @@ func (d *Device) Lookup(address netip.Addr) *device.Peer {
 // handshake state: it never runs as a kernel interface, and sing-box's Clash
 // API connection tracker does not see traffic through it (endpoint, not
 // inbound). Callers (see experimental/clashapi/awg.go) parse this text.
+// Gated on started rather than a nil awgDevice: Close leaves the pointer set,
+// so a nil check would report a stopped device's stale (empty) peer list as a
+// live one. The atomic also orders the read — Start stores it after assigning
+// awgDevice, so a true here means that write is visible to this goroutine.
 func (d *Device) IpcGet() (string, error) {
-	if d.awgDevice == nil {
+	if !d.started.Load() {
 		return "", E.New("device not started")
 	}
 	return d.awgDevice.IpcGet()
