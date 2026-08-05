@@ -6,7 +6,7 @@ import (
 	"net/netip"
 	"os"
 
-	awgTun "github.com/amnezia-vpn/amneziawg-go/tun"
+	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"

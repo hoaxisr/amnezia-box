@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"sync/atomic"
 
-	"github.com/amnezia-vpn/amneziawg-go/device"
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing-tun/gtcpip/header"

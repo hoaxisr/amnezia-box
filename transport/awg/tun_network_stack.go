@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	awgTun "github.com/amnezia-vpn/amneziawg-go/tun"
+	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
 	"github.com/sagernet/gvisor/pkg/buffer"
 	"github.com/sagernet/gvisor/pkg/tcpip"
