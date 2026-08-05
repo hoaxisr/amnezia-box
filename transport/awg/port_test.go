@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/amnezia-vpn/amneziawg-go/device"
-	awgTun "github.com/amnezia-vpn/amneziawg-go/tun"
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
+	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/metadata"
 )
