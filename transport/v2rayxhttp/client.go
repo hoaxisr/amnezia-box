@@ -333,7 +333,18 @@ func createHTTPClient(dest M.Socksaddr, dialer N.Dialer, options *option.V2RayXH
 				if dErr != nil {
 					return nil, dErr
 				}
-				return qtls.DialEarly(ctx, udpConn, tlsConfig, cfg)
+				quicConn, dErr := qtls.DialEarly(ctx, udpConn, tlsConfig, cfg)
+				if dErr != nil {
+					udpConn.Close()
+					return nil, dErr
+				}
+				// quic-go does not take ownership of the conn passed to Dial:
+				// when the connection ends it only stops reading.
+				go func() {
+					<-quicConn.Context().Done()
+					udpConn.Close()
+				}()
+				return quicConn, nil
 			},
 		}
 	case "2":
