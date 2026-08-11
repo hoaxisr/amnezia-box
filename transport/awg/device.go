@@ -5,11 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
-	"reflect"
 	"strings"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
@@ -23,11 +21,23 @@ import (
 	"github.com/sagernet/sing/common/network"
 )
 
+// DomainPeer is a peer whose endpoint is configured as a domain: Resolve is
+// invoked on every handshake initiation, and the initiation is sent to every
+// address it returns, so a moved or multi-address server is followed without
+// restarting the endpoint.
+type DomainPeer struct {
+	Domain       string
+	PublicKeyHex string
+	Port         uint16
+	Resolve      func() ([]netip.Addr, error)
+}
+
 type DeviceOpts struct {
 	UseIntegratedTun bool
 	Address          []netip.Prefix
 	AllowedIps       []netip.Prefix
 	ExcludedIps      []netip.Prefix
+	DomainPeers      []DomainPeer
 	MTU              uint32
 	// Handler receives inbound connections from the tunnel to arbitrary
 	// destinations (gateway/exit role). Only honored by the gVisor
@@ -44,6 +54,7 @@ type Device struct {
 	logger       *device.Logger
 	ipcConfig    string
 	address      []netip.Prefix
+	domainPeers  []DomainPeer
 	mtu          uint32
 	started      atomic.Bool
 	allowedIPs   *device.AllowedIPs
@@ -83,6 +94,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 		logger:       awgLogger,
 		ipcConfig:    ipcConfig,
 		address:      opts.Address,
+		domainPeers:  opts.DomainPeers,
 		mtu:          opts.MTU,
 	}, nil
 }
@@ -101,18 +113,50 @@ func (d *Device) Start(stage adapter.StartStage) error {
 	}
 
 	d.awgDevice = device.NewDevice(d.returnDevice, d.bind, d.logger)
-	// amneziawg-go keeps the peer allowed-ips trie private; the same
-	// reflect+unsafe access as transport/wireguard.Endpoint.Start is used
-	// here to back PreferredAddress (Device.Lookup).
-	d.allowedIPs = (*device.AllowedIPs)(unsafe.Pointer(reflect.Indirect(reflect.ValueOf(d.awgDevice)).FieldByName("allowedips").UnsafeAddr()))
+	d.allowedIPs = d.awgDevice.AllowedIPs()
 	if err := d.awgDevice.IpcSet(d.ipcConfig); err != nil {
 		return E.Cause(err, "set ipc config")
+	}
+	if err := d.attachPeerResolvers(); err != nil {
+		return err
 	}
 
 	if err := d.awgDevice.Up(); err != nil {
 		return err
 	}
 	d.started.Store(true)
+	return nil
+}
+
+// attachPeerResolvers must run after IpcSet: the peers it looks up are created
+// by the IPC config.
+func (d *Device) attachPeerResolvers() error {
+	for _, peer := range d.domainPeers {
+		var publicKey device.NoisePublicKey
+		if err := publicKey.FromHex(peer.PublicKeyHex); err != nil {
+			return E.Cause(err, "parse public key of peer ", peer.Domain)
+		}
+		awgPeer := d.awgDevice.LookupPeer(publicKey)
+		if awgPeer == nil {
+			return E.New("missing configured peer ", peer.Domain)
+		}
+		resolve, port := peer.Resolve, peer.Port
+		awgPeer.SetEndpointResolver(func() ([]conn.Endpoint, error) {
+			addresses, err := resolve()
+			if err != nil {
+				return nil, err
+			}
+			endpoints := make([]conn.Endpoint, 0, len(addresses))
+			for _, address := range addresses {
+				endpoint, err := d.bind.ParseEndpoint(netip.AddrPortFrom(address, port).String())
+				if err != nil {
+					return nil, err
+				}
+				endpoints = append(endpoints, endpoint)
+			}
+			return endpoints, nil
+		})
+	}
 	return nil
 }
 
