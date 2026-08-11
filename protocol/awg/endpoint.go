@@ -92,20 +92,39 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	// Always use system resolver for peer endpoints because:
 	// 1. VPN server must be resolved before VPN tunnel is established
 	// 2. dnsRouter may not be fully initialized at this stage
-	var resolvePeer func(domain string) (netip.Addr, error)
+	var resolvePeer func(domain string) ([]netip.Addr, error)
 	if remoteIsDomain {
-		resolvePeer = func(domain string) (netip.Addr, error) {
-			addrs, lookupErr := net.DefaultResolver.LookupNetIP(ctx, "ip", domain)
-			if lookupErr != nil {
-				return netip.Addr{}, lookupErr
-			}
-			return addrs[0], nil
+		resolvePeer = func(domain string) ([]netip.Addr, error) {
+			return net.DefaultResolver.LookupNetIP(ctx, "ip", domain)
 		}
 	}
 
 	ipc, err := genIpcConfig(options, resolvePeer)
 	if err != nil {
 		return nil, err
+	}
+
+	// The IPC config above pins whatever the domain resolved to right now;
+	// these resolvers re-run on every handshake initiation, so a server that
+	// moved (DDNS) or answers with several addresses is still reached.
+	var domainPeers []awg.DomainPeer
+	for _, peer := range options.Peers {
+		if peer.Address == "" || peer.Port == 0 || M.ParseAddr(peer.Address).IsValid() {
+			continue
+		}
+		publicKeyBytes, decodeErr := base64.StdEncoding.DecodeString(peer.PublicKey)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		domain := peer.Address
+		domainPeers = append(domainPeers, awg.DomainPeer{
+			Domain:       domain,
+			PublicKeyHex: hex.EncodeToString(publicKeyBytes),
+			Port:         peer.Port,
+			Resolve: func() ([]netip.Addr, error) {
+				return resolvePeer(domain)
+			},
+		})
 	}
 
 	logger.Debug("AWG IPC config:\n", ipc)
@@ -128,6 +147,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		Address:          options.Address,
 		AllowedIps:       allowedIps.Prefixes(),
 		ExcludedIps:      excludedIps.Prefixes(),
+		DomainPeers:      domainPeers,
 		MTU:              options.MTU,
 		Handler:          ep,
 		UDPTimeout:       constant.UDPTimeout,
@@ -140,7 +160,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	return ep, nil
 }
 
-func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string) (netip.Addr, error)) (string, error) {
+func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string) ([]netip.Addr, error)) (string, error) {
 	if opts.PrivateKey == "" {
 		return "", E.New("missing private key")
 	}
@@ -253,11 +273,11 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 				if resolvePeer == nil {
 					return "", E.New("peer address is a domain but no resolver provided: ", peer.Address)
 				}
-				resolvedAddr, resolveErr := resolvePeer(peer.Address)
+				resolvedAddrs, resolveErr := resolvePeer(peer.Address)
 				if resolveErr != nil {
 					return "", E.Cause(resolveErr, "resolve peer endpoint ", peer.Address)
 				}
-				endpointAddr = resolvedAddr.String()
+				endpointAddr = resolvedAddrs[0].String()
 			}
 			// net.JoinHostPort оборачивает IPv6-литерал в скобки ([::1]:port);
 			// без этого endpoint=::1:51820 — невалидный UAPI-адрес для wireguard-go.
