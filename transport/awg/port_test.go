@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"strings"
 	"sync"
 	"testing"
 
@@ -169,6 +170,51 @@ func TestDevicePortAddressesAndMTU(t *testing.T) {
 	}
 	if d.PortMTU() != 1408 {
 		t.Fatalf("unexpected MTU: %d", d.PortMTU())
+	}
+}
+
+// TestAttachPeerResolvers checks the identity mapping between the IPC config
+// (which creates the peers) and DomainPeer.PublicKeyHex (which looks them up):
+// a mismatch would silently leave a domain peer without a resolver, so the
+// lookup must fail loudly instead.
+func TestAttachPeerResolvers(t *testing.T) {
+	realTun, err := newNetworkTun([]netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")}, 1408)
+	if err != nil {
+		t.Fatalf("create network tun: %v", err)
+	}
+	logger := &device.Logger{
+		Verbosef: func(string, ...any) {},
+		Errorf:   func(string, ...any) {},
+	}
+	awgDev := device.NewDevice(newReturnDevice(realTun), newBind(context.Background(), nil), logger)
+	defer awgDev.Close()
+
+	peerKeyHex := strings.Repeat("ab", 32)
+	err = awgDev.IpcSet("private_key=" + strings.Repeat("cd", 32) +
+		"\npublic_key=" + peerKeyHex +
+		"\nallowed_ip=0.0.0.0/0")
+	if err != nil {
+		t.Fatalf("set ipc config: %v", err)
+	}
+
+	d := &Device{
+		awgDevice: awgDev,
+		domainPeers: []DomainPeer{{
+			Domain:       "vpn.example",
+			PublicKeyHex: peerKeyHex,
+			Port:         51820,
+			Resolve: func() ([]netip.Addr, error) {
+				return []netip.Addr{netip.MustParseAddr("192.0.2.1")}, nil
+			},
+		}},
+	}
+	if err = d.attachPeerResolvers(); err != nil {
+		t.Fatalf("attach resolver to a configured peer: %v", err)
+	}
+
+	d.domainPeers[0].PublicKeyHex = strings.Repeat("ef", 32)
+	if err = d.attachPeerResolvers(); err == nil {
+		t.Fatal("expected an error attaching a resolver to an unconfigured peer")
 	}
 }
 
