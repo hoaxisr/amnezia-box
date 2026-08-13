@@ -251,6 +251,14 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 	if opts.MaxHandshakeAttempts != "" {
 		s += "\nmax_handshake_attempts=" + opts.MaxHandshakeAttempts
 	}
+	// Device-scoped, so they have to stay above the first public_key= line:
+	// everything below it is parsed as a peer field.
+	if opts.RandomTrailers {
+		s += "\nrandom_trailers=true"
+	}
+	if opts.DisableCookies {
+		s += "\ndisable_cookies=true"
+	}
 
 	for _, peer := range opts.Peers {
 		publicKeyBytes, err := base64.StdEncoding.DecodeString(peer.PublicKey)
