@@ -41,6 +41,16 @@ type AwgEndpointOptions struct {
 	KeepaliveTimeout       string `json:"keepalive_timeout,omitempty"`
 	MaxHandshakeAttempts   string `json:"max_handshake_attempts,omitempty"`
 
+	// AWG 3.1 device flags. Both default to off, which is exactly the device
+	// default, so they are omitted when false.
+	//
+	// RandomTrailers is not negotiated on the wire: with it on, handshake and
+	// cookie messages carry a random tail outside the encryption, and a peer
+	// running 3.0 drops them on the length check without a word. Both ends have
+	// to be on 3.1.
+	RandomTrailers bool `json:"random_trailers,omitempty"`
+	DisableCookies bool `json:"disable_cookies,omitempty"`
+
 	Peers []AwgPeerOptions `json:"peers,omitempty"`
 	DialerOptions
 }
