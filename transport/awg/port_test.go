@@ -186,7 +186,7 @@ func TestAttachPeerResolvers(t *testing.T) {
 		Verbosef: func(string, ...any) {},
 		Errorf:   func(string, ...any) {},
 	}
-	awgDev := device.NewDevice(newReturnDevice(realTun), newBind(context.Background(), nil), logger)
+	awgDev := device.NewDevice(newReturnDevice(realTun), newBind(context.Background(), testDialer{}), logger)
 	defer awgDev.Close()
 
 	peerKeyHex := strings.Repeat("ab", 32)
@@ -232,7 +232,7 @@ func TestDeviceCloseDoesNotDoubleCloseTun(t *testing.T) {
 		Verbosef: func(string, ...any) {},
 		Errorf:   func(string, ...any) {},
 	}
-	awgDev := device.NewDevice(rd, newBind(context.Background(), nil), logger)
+	awgDev := device.NewDevice(rd, newBind(context.Background(), testDialer{}), logger)
 
 	d := &Device{
 		awgDevice:    awgDev,
@@ -249,4 +249,19 @@ func TestDeviceCloseDoesNotDoubleCloseTun(t *testing.T) {
 	if err := d.Close(); err != nil {
 		t.Fatalf("unexpected error closing device: %v", err)
 	}
+}
+
+// testDialer — минимальная реализация N.Dialer для bind_adapter. Тесты
+// поднимают устройство целиком, и после апстримного бампа gvisor оно доходит
+// до BindUpdate → Open(0) → connect(port=0), то есть до dialer.ListenPacket.
+// Раньше туда не доходило, поэтому фикстура передавала nil и падала паникой,
+// как только путь ожил. В проде диалер всегда настоящий (device.go:93).
+type testDialer struct{}
+
+func (testDialer) DialContext(_ context.Context, _ string, _ metadata.Socksaddr) (net.Conn, error) {
+	return nil, errors.New("dial not supported in tests")
+}
+
+func (testDialer) ListenPacket(_ context.Context, _ metadata.Socksaddr) (net.PacketConn, error) {
+	return net.ListenUDP("udp", &net.UDPAddr{})
 }
