@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net"
 	"net/netip"
+	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/endpoint"
@@ -95,7 +96,19 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	var resolvePeer func(domain string) ([]netip.Addr, error)
 	if remoteIsDomain {
 		resolvePeer = func(domain string) ([]netip.Addr, error) {
-			return net.DefaultResolver.LookupNetIP(ctx, "ip", domain)
+			// Резолв стартового эндпоинта не должен задерживать старт: он
+			// синхронный, идёт по всем доменным пирам подряд, а молчащий (а не
+			// отвергающий) DNS даёт полный таймаут резолвера на каждого. Сверху
+			// awg-manager ждёт готовности не дольше минуты и по таймауту убивает
+			// живой процесс, тратя попытку автоперезапуска. Не разрешилось за
+			// 3 с — поднимаемся без endpoint=, дальше дело DomainPeers.Resolve.
+			lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			defer cancel()
+			addrs, lookupErr := net.DefaultResolver.LookupNetIP(lookupCtx, "ip", domain)
+			if lookupErr != nil {
+				logger.Warn("не удалось разрешить адрес пира ", domain, ": ", lookupErr)
+			}
+			return addrs, lookupErr
 		}
 	}
 
@@ -266,22 +279,23 @@ func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string
 			s += "\npreshared_key=" + hex.EncodeToString(presharedKeyBytes)
 		}
 		if peer.Address != "" && peer.Port != 0 {
-			// Resolve domain to IP if necessary
-			endpointAddr := peer.Address
-			if addr := M.ParseAddr(peer.Address); !addr.IsValid() {
-				// It's a domain, resolve it
-				if resolvePeer == nil {
-					return "", E.New("peer address is a domain but no resolver provided: ", peer.Address)
+			// Стартовый endpoint не обязателен: доменного пира поднимет
+			// DomainPeers.Resolve на первой инициации хендшейка. Фатальный отказ
+			// здесь оставлял туннель лежать до 15 минут после ребута, пока не
+			// поднялся DNS, хотя апстримный wireguard в тех же условиях стартует.
+			endpointAddr := ""
+			if addr := M.ParseAddr(peer.Address); addr.IsValid() {
+				endpointAddr = peer.Address
+			} else if resolvePeer != nil {
+				if resolved, resolveErr := resolvePeer(peer.Address); resolveErr == nil && len(resolved) > 0 {
+					endpointAddr = resolved[0].String()
 				}
-				resolvedAddrs, resolveErr := resolvePeer(peer.Address)
-				if resolveErr != nil {
-					return "", E.Cause(resolveErr, "resolve peer endpoint ", peer.Address)
-				}
-				endpointAddr = resolvedAddrs[0].String()
 			}
-			// net.JoinHostPort оборачивает IPv6-литерал в скобки ([::1]:port);
-			// без этого endpoint=::1:51820 — невалидный UAPI-адрес для wireguard-go.
-			s += "\nendpoint=" + net.JoinHostPort(endpointAddr, format.ToString(peer.Port))
+			if endpointAddr != "" {
+				// net.JoinHostPort оборачивает IPv6-литерал в скобки ([::1]:port);
+				// без этого endpoint=::1:51820 — невалидный UAPI-адрес для wireguard-go.
+				s += "\nendpoint=" + net.JoinHostPort(endpointAddr, format.ToString(peer.Port))
+			}
 		}
 		if peer.PersistentKeepaliveInterval != "" && peer.PersistentKeepaliveInterval != "0" {
 			s += "\npersistent_keepalive_interval=" + string(peer.PersistentKeepaliveInterval)
