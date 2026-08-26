@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/sagernet/sing-box/common/xray/crypto"
+	"github.com/sagernet/sing-box/schema"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -69,6 +70,22 @@ func (c *Range) UnmarshalJSON(content []byte) error {
 	}
 	*c = Range{rangeValue.From, rangeValue.To}
 	return nil
+}
+
+// DescribeSchema mirrors UnmarshalJSON: a bare number, "N" or "N-M" as a
+// string, or an explicit {from, to} object. Which bounds a given field accepts
+// is checked by the option layer, not here.
+func (c Range) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
+	return builder.Define("XrayRange", func() (*schema.Node, error) {
+		object := schema.StrictObject()
+		object.Properties.Put("from", schema.IntegerNode())
+		object.Properties.Put("to", schema.IntegerNode())
+		return schema.AnyOf(
+			schema.IntegerNode(),
+			&schema.Node{Type: "string", Pattern: `^-?\d+(-\d+)?$`},
+			object,
+		), nil
+	})
 }
 
 func (c *Range) String() string {
