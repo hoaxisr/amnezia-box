@@ -82,7 +82,7 @@ func (c Range) DescribeSchema(builder schema.Builder) (*schema.Node, error) {
 		object.Properties.Put("to", schema.IntegerNode())
 		return schema.AnyOf(
 			schema.IntegerNode(),
-			&schema.Node{Type: "string", Pattern: `^-?\d+(-\d+)?$`},
+			&schema.Node{Type: "string", Pattern: `^\d+(-\d+)?$`},
 			object,
 		), nil
 	})
