@@ -92,8 +92,6 @@ func (k *AwgKeepalive) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// validateUintRange mirrors UintRange.FromString in amneziawg-go, so a broken
-// range is reported while reading the config instead of when the device starts.
 // DescribeSchema mirrors UnmarshalJSON: a plain second count, or a "min-max"
 // range as a string. The exact bounds stay with UnmarshalJSON — the schema
 // only describes the shape.
@@ -106,6 +104,8 @@ func (k AwgKeepalive) DescribeSchema(builder schema.Builder) (*schema.Node, erro
 	})
 }
 
+// validateUintRange mirrors UintRange.FromString in amneziawg-go, so a broken
+// range is reported while reading the config instead of when the device starts.
 func validateUintRange(value string) error {
 	lo, hi, isRange := strings.Cut(value, "-")
 	loNum, err := strconv.ParseUint(strings.TrimSpace(lo), 10, 16)
