@@ -119,7 +119,7 @@ jobs:
           TAG: ${{ github.event.inputs.release_tag || github.ref_name }}
         run: |
           set -euo pipefail
-          gh release create "$TAG" dist/* \
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
             --repo "${{ github.repository }}" \
             --title "$TAG" --notes "sing-box + AmneziaWG(AWG3) + mieru + xhttp — Entware builds" \
             || gh release upload "$TAG" dist/* --repo "${{ github.repository }}" --clobber
