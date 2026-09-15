@@ -182,7 +182,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	scMaxEachPostBytes := options.GetNormalizedScMaxEachPostBytes()
 	scMinPostsIntervalMs := options.GetNormalizedScMinPostsIntervalMs()
 	if scMaxEachPostBytes.From <= 0 {
-		panic("`scMaxEachPostBytes` should be bigger than 0")
+		return nil, E.New("invalid `scMaxEachPostBytes`: lower bound should be bigger than 0")
 	}
 	maxUploadSize := scMaxEachPostBytes.Rand()
 	// WithSizeLimit(0) will still allow single bytes to pass, and a lot of
