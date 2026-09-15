@@ -374,7 +374,7 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedUplinkHTTPMethod() string {
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxEachPostBytes() Xbadoption.Range {
-	if c.ScMaxEachPostBytes == nil {
+	if c.ScMaxEachPostBytes == nil || c.ScMaxEachPostBytes.To == 0 {
 		return Xbadoption.Range{
 			From: 1000000,
 			To:   1000000,
@@ -384,7 +384,7 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxEachPostBytes() Xbadoption.Ran
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScMinPostsIntervalMs() Xbadoption.Range {
-	if c.ScMinPostsIntervalMs == nil {
+	if c.ScMinPostsIntervalMs == nil || c.ScMinPostsIntervalMs.To == 0 {
 		return Xbadoption.Range{
 			From: 30,
 			To:   30,
@@ -402,7 +402,7 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedScMaxBufferedPosts() int {
 }
 
 func (c *V2RayXHTTPBaseOptions) GetNormalizedScStreamUpServerSecs() Xbadoption.Range {
-	if c.ScStreamUpServerSecs == nil {
+	if c.ScStreamUpServerSecs == nil || c.ScStreamUpServerSecs.To == 0 {
 		return Xbadoption.Range{
 			From: 20,
 			To:   80,
