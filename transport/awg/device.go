@@ -40,10 +40,13 @@ type DeviceOpts struct {
 	DomainPeers      []DomainPeer
 	MTU              uint32
 	// Handler receives inbound connections from the tunnel to arbitrary
-	// destinations (gateway/exit role). Only honored by the gVisor
-	// non-integrated tun; nil keeps client-only behavior.
+	// destinations (gateway/exit role). Only honored by the non-integrated
+	// tun; nil keeps client-only behavior.
 	Handler    tun.Handler
 	UDPTimeout time.Duration
+	// MemoryPressure lets the stack release buffers when the system is low on
+	// memory; nil keeps the pool at its default size.
+	MemoryPressure func() tun.MemoryPressure
 }
 
 type Device struct {
@@ -72,7 +75,7 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 			return nil, exceptions.Cause(err, "create tunnel")
 		}
 	} else {
-		tun, err = newNonIntegratedTun(ctx, opts.Address, opts.MTU, opts.Handler, opts.UDPTimeout, logger)
+		tun, err = newNonIntegratedTun(ctx, opts.Address, opts.MTU, opts.Handler, opts.UDPTimeout, opts.MemoryPressure, logger)
 		if err != nil {
 			return nil, err
 		}
