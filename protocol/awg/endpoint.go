@@ -14,6 +14,7 @@ import (
 	"github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing-box/transport/awg"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
@@ -143,7 +144,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 	logger.Debug("AWG IPC config:\n", ipc)
 
 	// The endpoint is created before the device so it can be passed as the
-	// gVisor forwarder Handler: inbound connections from the tunnel to
+	// stack Handler: inbound connections from the tunnel to
 	// arbitrary destinations are routed via Endpoint.NewConnectionEx /
 	// NewPacketConnectionEx (gateway/exit role). Mirrors transport/wireguard.
 	ep := &Endpoint{
@@ -164,6 +165,7 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 		MTU:              options.MTU,
 		Handler:          ep,
 		UDPTimeout:       constant.UDPTimeout,
+		MemoryPressure:   oomkiller.MemoryPressure(ctx),
 	})
 	if err != nil {
 		return nil, err
