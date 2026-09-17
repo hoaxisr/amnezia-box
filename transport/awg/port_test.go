@@ -178,7 +178,7 @@ func TestDevicePortAddressesAndMTU(t *testing.T) {
 // a mismatch would silently leave a domain peer without a resolver, so the
 // lookup must fail loudly instead.
 func TestAttachPeerResolvers(t *testing.T) {
-	realTun, err := newNetworkTun([]netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")}, 1408)
+	realTun, err := newUnstartedTun([]netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")}, 1408)
 	if err != nil {
 		t.Fatalf("create network tun: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestAttachPeerResolvers(t *testing.T) {
 // awgDevice.Close(); Device.Close() must not close it a second time (which
 // panicked with "close of closed channel" on the netstack tun).
 func TestDeviceCloseDoesNotDoubleCloseTun(t *testing.T) {
-	realTun, err := newNetworkTun([]netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")}, 1408)
+	realTun, err := newUnstartedTun([]netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")}, 1408)
 	if err != nil {
 		t.Fatalf("create network tun: %v", err)
 	}
