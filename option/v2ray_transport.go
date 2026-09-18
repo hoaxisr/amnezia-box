@@ -332,8 +332,11 @@ func (c *V2RayXHTTPBaseOptions) GetNormalizedPath() string {
 	if path == "" || path[0] != '/' {
 		path = "/" + path
 	}
-	if path[len(path)-1] != '/' {
-		path = path + "/"
+	if c.GetNormalizedSessionPlacement() == PlacementPath ||
+		c.GetNormalizedSeqPlacement() == PlacementPath {
+		if path[len(path)-1] != '/' {
+			path = path + "/"
+		}
 	}
 	return path
 }
