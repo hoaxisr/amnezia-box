@@ -25,3 +25,27 @@ func TestXHTTPNormalizeZeroUpperBoundFallsBackToDefault(t *testing.T) {
 		}
 	}
 }
+
+// Хвостовой "/" нужен серверу только чтобы отделить sessionID и seq, когда те
+// лежат в пути. При любом другом размещении он ломает совпадение пути на
+// стороне сервера (Xray #6410).
+func TestXHTTPNormalizedPathTrailingSlashOnlyForPathPlacement(t *testing.T) {
+	for name, tc := range map[string]struct {
+		session, seq string
+		want         string
+	}{
+		"default":      {"", "", "/upload/"},
+		"session path": {PlacementPath, PlacementQuery, "/upload/"},
+		"seq path":     {PlacementQuery, PlacementPath, "/upload/"},
+		"neither path": {PlacementQuery, PlacementHeader, "/upload"},
+	} {
+		o := V2RayXHTTPBaseOptions{
+			Path:             "upload",
+			SessionPlacement: tc.session,
+			SeqPlacement:     tc.seq,
+		}
+		if got := o.GetNormalizedPath(); got != tc.want {
+			t.Errorf("%s: got %q, want %q", name, got, tc.want)
+		}
+	}
+}
