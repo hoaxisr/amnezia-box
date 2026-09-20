@@ -154,6 +154,8 @@ github.com/hdevalence/ed25519consensus v0.2.0 h1:37ICyZqdyj0lAZ8P4D1d1id3HqbbG1N
 github.com/hdevalence/ed25519consensus v0.2.0/go.mod h1:w3BHWjwJbFU29IRHL1Iqkw3sus+7FctEyM4RqDxYNzo=
 github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.2 h1:4CkMFiqUx+3kfQ69kHilWX6h7BhThw2LpDiG2KVfnY8=
 github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.2/go.mod h1:YoPc6qcOZqD7TXZ1xpedD8Sx3aSKsxN05ZqEFmXDNHk=
+github.com/hoaxisr/sing v0.9.5-awgm.1 h1:7sKlH1JNq5C5wKtf4c7h8fHk6XYvq1rT2RRe+ED+jxc=
+github.com/hoaxisr/sing v0.9.5-awgm.1/go.mod h1:K3Owt3xPhHugvlnlPPxZJ/exXdaJfEPOTNorGk4AXjo=
 github.com/huin/goupnp v1.3.0 h1:UvLUlWDNpoUdYzb2TCn+MuTWtcjXKSza2n6CBdQ0xXc=
 github.com/huin/goupnp v1.3.0/go.mod h1:gnGPsThkYa7bFi/KWmEysQRf48l2dvR5bxr2OFckNX8=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
