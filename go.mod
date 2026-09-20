@@ -202,3 +202,5 @@ require (
 )
 
 replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.2
+
+replace github.com/sagernet/sing => github.com/hoaxisr/sing v0.9.5-awgm.1
