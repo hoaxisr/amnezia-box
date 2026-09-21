@@ -217,7 +217,28 @@ func (c *Client) Dial(ctx context.Context, destination M.Socksaddr) (net.Conn, e
 			conn.setUp(response.Body, nil)
 		}
 	}()
+	// awgm: дождаться ответа на CONNECT — иначе 407/ошибка TLS всплывают на первом
+	// Read, а данные уходят в трубу до подтверждения (см. mihomo fd74ecb6e).
+	if err := waitSetUp(ctx, &conn.httpConn); err != nil {
+		return nil, err
+	}
 	return conn, nil
+}
+
+// awgm: waitSetUp блокирует до setUp или до отмены ctx; при отмене закрывает
+// соединение, чтобы фоновый RoundTrip не остался висеть.
+func waitSetUp(ctx context.Context, conn *httpConn) error {
+	select {
+	case <-conn.created:
+		if conn.createErr != nil {
+			_ = conn.Close()
+			return conn.createErr
+		}
+		return nil
+	case <-ctx.Done():
+		_ = conn.Close()
+		return ctx.Err()
+	}
 }
 
 func (c *Client) ListenPacket(ctx context.Context) (net.PacketConn, error) {
@@ -258,6 +279,10 @@ func (c *Client) ListenPacket(ctx context.Context) (net.PacketConn, error) {
 			conn.setUp(response.Body, nil)
 		}
 	}()
+	// awgm: см. Dial.
+	if err := waitSetUp(ctx, &conn.httpConn); err != nil {
+		return nil, err
+	}
 	return conn, nil
 }
 
