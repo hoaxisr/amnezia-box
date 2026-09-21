@@ -156,6 +156,8 @@ github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.2 h1:4CkMFiqUx+3kfQ69kHilWX6h7BhT
 github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.2/go.mod h1:YoPc6qcOZqD7TXZ1xpedD8Sx3aSKsxN05ZqEFmXDNHk=
 github.com/hoaxisr/sing v0.9.5-awgm.1 h1:7sKlH1JNq5C5wKtf4c7h8fHk6XYvq1rT2RRe+ED+jxc=
 github.com/hoaxisr/sing v0.9.5-awgm.1/go.mod h1:K3Owt3xPhHugvlnlPPxZJ/exXdaJfEPOTNorGk4AXjo=
+github.com/hoaxisr/sing-tun v0.9.4-awgm.1 h1:d8OiobvdH5vkPq3MAAyUFFlnMO2SfwyzQZon032KZvY=
+github.com/hoaxisr/sing-tun v0.9.4-awgm.1/go.mod h1:liMb9HPIWcFWqF6VJ/ttIY8fTSRPdRltBeSeEcXt1Dk=
 github.com/huin/goupnp v1.3.0 h1:UvLUlWDNpoUdYzb2TCn+MuTWtcjXKSza2n6CBdQ0xXc=
 github.com/huin/goupnp v1.3.0/go.mod h1:gnGPsThkYa7bFi/KWmEysQRf48l2dvR5bxr2OFckNX8=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
