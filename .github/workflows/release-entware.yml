@@ -97,10 +97,10 @@ jobs:
 
           if [ "${{ matrix.naive }}" = "true" ]; then
             eval "$( cd "$HOME/cronet-go" && go run ./cmd/build-naive --target="linux/${{ matrix.goarch }}" --libc=musl env --export )"
-            TAGS="$(cat release/DEFAULT_BUILD_TAGS),with_musl,with_awg,with_low_memory"
+            TAGS="$(cat release/DEFAULT_BUILD_TAGS),with_musl,with_awg,with_low_memory,with_trusttunnel"
             CGO=1
           else
-            TAGS="$(cat release/DEFAULT_BUILD_TAGS_OTHERS),with_awg,with_low_memory"
+            TAGS="$(cat release/DEFAULT_BUILD_TAGS_OTHERS),with_awg,with_low_memory,with_trusttunnel"
             CGO=0
           fi
           echo "Build tags: $TAGS"
