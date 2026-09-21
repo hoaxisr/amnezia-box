@@ -66,8 +66,25 @@ jobs:
           git -C "$HOME/cronet-go" fetch --depth=1 origin "$CRONET_REF"
           git -C "$HOME/cronet-go" checkout --force FETCH_HEAD
           git -C "$HOME/cronet-go" submodule update --init --recursive --depth=1
-          rm -f "$HOME/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg"
-          ( cd "$HOME/cronet-go" && GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh )
+          # keyring для проверки Release.gpg хостового Debian-сисрута (sysroot_creator.py).
+          # Апстримный generate_keyring.sh тянет ключи с keyserver.ubuntu.com — 21.09.2026
+          # он лёг, gpg --recv-keys висел 19 минут и уронил все naive-джобы. Те же ключи
+          # лежат в официальных пакетах Debian; берём их из pool (свежая версия по индексу),
+          # keyring = конкатенация двух keyring-файлов, gpgv такой формат читает.
+          KEYRING="$HOME/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg"
+          rm -f "$KEYRING"
+          KEYS_TMP="$(mktemp -d)"
+          for pkg in debian-archive-keyring debian-ports-archive-keyring; do
+            deb="$(curl -fsSL "https://deb.debian.org/debian/pool/main/d/$pkg/" | grep -oE "${pkg}_[0-9][^\"]*_all\.deb" | sort -V | tail -1)"
+            [ -n "$deb" ] || { echo "no $pkg in pool index"; exit 1; }
+            curl -fsSL -o "$KEYS_TMP/$deb" "https://deb.debian.org/debian/pool/main/d/$pkg/$deb"
+            dpkg-deb -x "$KEYS_TMP/$deb" "$KEYS_TMP/x"
+          done
+          # Все keyring-файлы обоих пакетов, включая *-removed: ключи buster и ports 2021–2025
+          # из списка generate_keyring.sh уже выведены из основных keyring'ов. Расширение
+          # у пакетов менялось (.gpg → .pgp), поэтому glob, а не имена.
+          cat "$KEYS_TMP"/x/usr/share/keyrings/* > "$KEYRING"
+          echo "keyring: $(gpg --list-packets "$KEYRING" | grep -c ':public key packet:') keys"
           ( cd "$HOME/cronet-go" && go run ./cmd/build-naive --target="linux/${{ matrix.goarch }}" --libc=musl download-toolchain )
 
       - name: Build sing-box (${{ matrix.arch }})
