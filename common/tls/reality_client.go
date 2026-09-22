@@ -30,7 +30,6 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -141,23 +140,13 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	uConfig.VerifyPeerCertificate = verifier.VerifyPeerCertificate
 	uConn := utls.UClient(conn, uConfig, e.uClient.id)
 	verifier.UConn = uConn
+	// Апстрим здесь вырезает X25519MLKEM768 из SupportedCurves/KeyShares
+	// (dbdcce20a, май 2025 — для серверов REALITY, ещё не знавших гибридной
+	// шары). Сервер REALITY с 8cdf7bf9 (Xray v26.9.8+) наоборот ОТВЕРГАЕТ
+	// ClientHello без X25519MLKEM768 перед X25519 — SagerNet/sing-box#4520.
+	// Отпечаток chrome в utls шлёт обе шары в нужном порядке, фильтр не нужен.
+	// При ребейзе на апстрим фильтр не возвращать.
 	err := uConn.BuildHandshakeState()
-	if err != nil {
-		return nil, err
-	}
-	for _, extension := range uConn.Extensions {
-		if ce, ok := extension.(*utls.SupportedCurvesExtension); ok {
-			ce.Curves = common.Filter(ce.Curves, func(curveID utls.CurveID) bool {
-				return curveID != utls.X25519MLKEM768
-			})
-		}
-		if ks, ok := extension.(*utls.KeyShareExtension); ok {
-			ks.KeyShares = common.Filter(ks.KeyShares, func(share utls.KeyShare) bool {
-				return share.Group != utls.X25519MLKEM768
-			})
-		}
-	}
-	err = uConn.BuildHandshakeState()
 	if err != nil {
 		return nil, err
 	}
@@ -184,14 +173,14 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	binary.BigEndian.PutUint64(hello.SessionId, uint64(nowTime.Unix()))
 
 	// Версия клиента, которую сервер REALITY читает из SessionId и сверяет с
-	// Min/MaxClientVer. При пустом minClientVer xray-core подставляет свой
-	// встроенный минимум 26.3.27 (infra/conf/transport_security.go), поэтому
-	// прежние 1.8.1 уходили в fallback у всех, кто обновил ядро; 3x-ui 3.5.0
-	// бандлит как раз xray 26.7.11. Апстрим sing-box значение не поднимал —
-	// при ребейзе правку сохранить.
+	// Min/MaxClientVer. Xray-клиент штампует сюда свою версию ядра, оператор
+	// может задать minClientVer до текущего Xray — держим номер актуального
+	// релиза Xray-core (26.9.9). Апстримные 1.8.1 отвергал уже встроенный
+	// минимум 26.3.27 (снят в 26.9.x, но у операторов остался в конфигах).
+	// Апстрим sing-box значение не поднимал — при ребейзе правку сохранить.
 	hello.SessionId[0] = 26
-	hello.SessionId[1] = 7
-	hello.SessionId[2] = 11
+	hello.SessionId[1] = 9
+	hello.SessionId[2] = 9
 	binary.BigEndian.PutUint32(hello.SessionId[4:], uint32(time.Now().Unix()))
 	copy(hello.SessionId[8:], e.shortID[:])
 	if debug.Enabled {
@@ -206,6 +195,11 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 		return nil, E.New("nil KeyShareKeys")
 	}
 	ecdheKey := keyShareKeys.Ecdhe
+	if ecdheKey == nil {
+		// Отпечаток без чистого X25519: сервер берёт X25519-половину из
+		// X25519MLKEM768 (REALITY ebbbf46e), клиент — как Xray и mihomo.
+		ecdheKey = keyShareKeys.MlkemEcdhe
+	}
 	if ecdheKey == nil {
 		return nil, E.New("nil ecdheKey")
 	}
