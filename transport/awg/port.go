@@ -87,7 +87,7 @@ func (d *Device) WritePackets(packets [][]byte) error {
 		} else {
 			source = v6
 		}
-		reply, replyOk := tun.BuildUnreachable(packet, source, state.headroom)
+		reply, replyOk := tun.BuildICMPError(packet, tun.ICMPErrorNoRoute, source, 0, state.headroom)
 		if replyOk {
 			replies = append(replies, reply)
 		}
