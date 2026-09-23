@@ -30,6 +30,7 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/debug"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"
@@ -44,10 +45,11 @@ import (
 var _ ConfigCompat = (*RealityClientConfig)(nil)
 
 type RealityClientConfig struct {
-	ctx       context.Context
-	uClient   *UTLSClientConfig
-	publicKey []byte
-	shortID   [8]byte
+	ctx                   context.Context
+	uClient               *UTLSClientConfig
+	publicKey             []byte
+	shortID               [8]byte
+	supportX25519MLKEM768 bool
 }
 
 func NewRealityClient(ctx context.Context, logger logger.ContextLogger, serverAddress string, options option.OutboundTLSOptions) (Config, error) {
@@ -83,7 +85,7 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 		return nil, E.New("invalid short_id")
 	}
 
-	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID}
+	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID, options.Reality.SupportX25519MLKEM768}
 	if options.KernelRx || options.KernelTx {
 		if !C.IsLinux {
 			return nil, E.New("kTLS is only supported on Linux")
@@ -140,15 +142,33 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	uConfig.VerifyPeerCertificate = verifier.VerifyPeerCertificate
 	uConn := utls.UClient(conn, uConfig, e.uClient.id)
 	verifier.UConn = uConn
-	// Апстрим здесь вырезает X25519MLKEM768 из SupportedCurves/KeyShares
-	// (dbdcce20a, май 2025 — для серверов REALITY, ещё не знавших гибридной
-	// шары). Сервер REALITY с 8cdf7bf9 (Xray v26.9.8+) наоборот ОТВЕРГАЕТ
-	// ClientHello без X25519MLKEM768 перед X25519 — SagerNet/sing-box#4520.
-	// Отпечаток chrome в utls шлёт обе шары в нужном порядке, фильтр не нужен.
-	// При ребейзе на апстрим фильтр не возвращать.
 	err := uConn.BuildHandshakeState()
 	if err != nil {
 		return nil, err
+	}
+	// X25519MLKEM768 вырезается, как в апстриме и в mihomo: с этой шарой
+	// ClientHello (~1.7 КБ) не влезает в один TCP-сегмент, и на российских
+	// сетях такие соединения периодически глушатся (awg-manager#944).
+	// Сервер REALITY с 8cdf7bf9 (Xray v26.9.8+) без неё клиента отвергает,
+	// поэтому для таких серверов шару включает флаг — тот же, что
+	// support-x25519mlkem768 у mihomo. Шара есть только у отпечатка chrome.
+	if !e.supportX25519MLKEM768 {
+		for _, extension := range uConn.Extensions {
+			if ce, ok := extension.(*utls.SupportedCurvesExtension); ok {
+				ce.Curves = common.Filter(ce.Curves, func(curveID utls.CurveID) bool {
+					return curveID != utls.X25519MLKEM768
+				})
+			}
+			if ks, ok := extension.(*utls.KeyShareExtension); ok {
+				ks.KeyShares = common.Filter(ks.KeyShares, func(share utls.KeyShare) bool {
+					return share.Group != utls.X25519MLKEM768
+				})
+			}
+		}
+		err = uConn.BuildHandshakeState()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(uConfig.NextProtos) > 0 {
@@ -271,6 +291,7 @@ func (e *RealityClientConfig) Clone() Config {
 		e.uClient.Clone().(*UTLSClientConfig),
 		e.publicKey,
 		e.shortID,
+		e.supportX25519MLKEM768,
 	}
 }
 
