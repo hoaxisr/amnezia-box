@@ -205,4 +205,4 @@ replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/hoaxisr/amneziawg-g
 
 replace github.com/sagernet/sing => github.com/hoaxisr/sing v0.9.6-awgm.1
 
-replace github.com/sagernet/sing-tun => github.com/hoaxisr/sing-tun v0.9.6-awgm.1
+replace github.com/sagernet/sing-tun => github.com/hoaxisr/sing-tun v0.9.6-awgm.2
