@@ -133,6 +133,14 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			enableGSO = tunMTU < 49152
 		}
 	}
+	if options.ExternalConfiguration {
+		if !C.IsLinux || usePlatformInterface {
+			return nil, E.New("`external_configuration` is only supported on Linux")
+		}
+		if options.AutoRoute || options.AutoRedirect {
+			return nil, E.New("`external_configuration` conflicts with `auto_route` and `auto_redirect`")
+		}
+	}
 	if options.MultiQueue {
 		if !C.IsLinux || usePlatformInterface {
 			return nil, E.New("`multi_queue` is only supported on Linux")
@@ -243,6 +251,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			InterfaceMonitor:                      networkManager.InterfaceMonitor(),
 			Logger:                                logger,
 			EXP_MultiPendingPackets:               C.IsDarwin,
+			EXP_ExternalConfiguration:             options.ExternalConfiguration,
 		},
 		udpTimeout:        udpTimeout,
 		udpMapping:        tun.NATMapping(options.UDPMapping),

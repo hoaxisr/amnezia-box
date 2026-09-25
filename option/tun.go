@@ -51,6 +51,7 @@ type TunInboundOptions struct {
 	UDPFiltering                  UDPNATBehavior                   `json:"udp_filtering,omitempty"`
 	UDPNATMax                     uint32                           `json:"udp_nat_max,omitempty"`
 	MultiQueue                    bool                             `json:"multi_queue,omitempty"`
+	ExternalConfiguration         bool                             `json:"external_configuration,omitempty"`
 	Platform                      *TunPlatformOptions              `json:"platform,omitempty"`
 	InboundOptions
 
