@@ -468,6 +468,11 @@ func (t *Inbound) Start(stage adapter.StartStage) error {
 		if err != nil {
 			return E.Cause(err, "configure tun interface")
 		}
+		// sing-tun при EXP_ExternalConfiguration пропускает RegisterMyInterface,
+		// а на нём держится отказ direct от петли в диапазон tun.
+		if t.tunOptions.EXP_ExternalConfiguration && t.tunOptions.NetNs == "" && t.tunOptions.InterfaceMonitor != nil {
+			t.tunOptions.InterfaceMonitor.RegisterMyInterface(t.tunOptions.Name)
+		}
 		t.logger.Trace("creating stack")
 		t.tunIf = tunInterface
 		if t.platformInterface != nil {
