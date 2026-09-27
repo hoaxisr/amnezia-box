@@ -201,8 +201,8 @@ require (
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
 )
 
-replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.2
+replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.3
 
 replace github.com/sagernet/sing => github.com/hoaxisr/sing v0.9.6-awgm.1
 
-replace github.com/sagernet/sing-tun => github.com/hoaxisr/sing-tun v0.9.6-awgm.2
+replace github.com/sagernet/sing-tun => github.com/hoaxisr/sing-tun v0.9.6-awgm.3

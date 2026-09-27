@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"os"
 
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -85,6 +86,9 @@ func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []neti
 		name:    name,
 		dialer:  dial,
 	}, nil
+}
+
+func (t *systemTun) SetDevice(device *device.Device, peers []*device.Peer) {
 }
 
 func (t *systemTun) Start() error {
