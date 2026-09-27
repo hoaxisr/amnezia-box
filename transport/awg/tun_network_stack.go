@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
-	"github.com/amnezia-vpn/amneziawg-go/v3/conn"
 	C "github.com/sagernet/sing-box/constant"
 	tun "github.com/sagernet/sing-tun"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -26,9 +26,10 @@ import (
 // transport/wireguard.stackDevice.
 type stackTun struct {
 	stack        *tun.Go
-	memoryTun    *tun.MemoryTun
+	router       *peerRouter
 	mtu          uint32
 	events       chan awgTun.Event
+	closed       chan struct{}
 	closeOnce    sync.Once
 	inet4Address netip.Addr
 	inet6Address netip.Addr
@@ -43,10 +44,10 @@ func newNonIntegratedTun(
 	memoryPressure func() tun.MemoryPressure,
 	log logger.ContextLogger,
 ) (tunAdapter, error) {
-	memoryTun := tun.NewMemoryTun(tun.MemoryTunOptions{MTU: int(mtu)})
+	router := newPeerRouter(address, mtu)
 	goStack, err := tun.NewGo(tun.StackOptions{
 		Context:     ctx,
-		Tun:         memoryTun,
+		Tun:         router.memoryTun,
 		TunOptions:  tun.Options{MTU: mtu},
 		UDPTimeout:  udpTimeout,
 		ICMPTimeout: C.ICMPTimeout,
@@ -57,23 +58,18 @@ func newNonIntegratedTun(
 		MemoryPressure: memoryPressure,
 	})
 	if err != nil {
-		memoryTun.Close()
+		router.close()
 		return nil, err
 	}
-	tunDevice := &stackTun{
-		stack:     goStack,
-		memoryTun: memoryTun,
-		mtu:       mtu,
-		events:    make(chan awgTun.Event, 1),
-	}
-	for _, prefix := range address {
-		if prefix.Addr().Is4() {
-			tunDevice.inet4Address = prefix.Addr()
-		} else {
-			tunDevice.inet6Address = prefix.Addr()
-		}
-	}
-	return tunDevice, nil
+	return &stackTun{
+		stack:        goStack,
+		router:       router,
+		mtu:          mtu,
+		events:       make(chan awgTun.Event, 1),
+		closed:       make(chan struct{}),
+		inet4Address: router.inet4Address,
+		inet6Address: router.inet6Address,
+	}, nil
 }
 
 func (t *stackTun) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
@@ -117,6 +113,10 @@ func (t *stackTun) bindAddress(destination M.Socksaddr) (netip.Addr, error) {
 	return t.inet6Address, nil
 }
 
+func (t *stackTun) SetDevice(device *device.Device, peers []*device.Peer) {
+	t.router.setPeers(device.AllowedIPs(), peers)
+}
+
 func (t *stackTun) Start() error {
 	err := t.stack.Start()
 	if err != nil {
@@ -131,7 +131,10 @@ func (t *stackTun) File() *os.File {
 }
 
 func (t *stackTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
-	return t.memoryTun.ReadPackets(bufs, sizes, offset)
+	// Outgoing packets reach the peers through the router, never through
+	// RoutineReadFromTUN, which just parks here until the device closes.
+	<-t.closed
+	return 0, os.ErrClosed
 }
 
 func (t *stackTun) Write(bufs [][]byte, offset int) (int, error) {
@@ -139,7 +142,7 @@ func (t *stackTun) Write(bufs [][]byte, offset int) (int, error) {
 	for _, packet := range bufs {
 		packets = append(packets, packet[offset:])
 	}
-	return t.memoryTun.WritePackets(packets)
+	return t.router.memoryTun.WritePackets(packets)
 }
 
 func (t *stackTun) Flush() error {
@@ -162,11 +165,12 @@ func (t *stackTun) Close() error {
 	var err error
 	t.closeOnce.Do(func() {
 		close(t.events)
-		err = E.Errors(t.stack.Close(), t.memoryTun.Close())
+		close(t.closed)
+		err = E.Errors(t.stack.Close(), t.router.close())
 	})
 	return err
 }
 
 func (t *stackTun) BatchSize() int {
-	return conn.IdealBatchSize
+	return 1
 }

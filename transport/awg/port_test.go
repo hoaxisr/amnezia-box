@@ -38,11 +38,12 @@ func (f *fakeTun) Close() error {
 	}
 	return nil
 }
-func (f *fakeTun) File() *os.File              { return nil }
-func (f *fakeTun) MTU() (int, error)           { return 1408, nil }
-func (f *fakeTun) Name() (string, error)       { return "fake", nil }
-func (f *fakeTun) Events() <-chan awgTun.Event { return nil }
-func (f *fakeTun) BatchSize() int              { return 1 }
+func (f *fakeTun) File() *os.File                           { return nil }
+func (f *fakeTun) MTU() (int, error)                        { return 1408, nil }
+func (f *fakeTun) Name() (string, error)                    { return "fake", nil }
+func (f *fakeTun) Events() <-chan awgTun.Event              { return nil }
+func (f *fakeTun) SetDevice(*device.Device, []*device.Peer) {}
+func (f *fakeTun) BatchSize() int                           { return 1 }
 
 func (f *fakeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 	<-f.closed

@@ -5,9 +5,11 @@ import (
 	"encoding/binary"
 	"net"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/sagernet/sing-box/adapter"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -182,37 +184,43 @@ func TestStackTunForwardsInbound(t *testing.T) {
 }
 
 // TestStackTunDialsOutbound guards the client role: a dial through the stack
-// must emit a packet towards the tunnel, sourced from the local tunnel address.
+// must be routed by AllowedIPs to its peer and pushed into it, which makes the
+// peer initiate a handshake towards its endpoint. The stack no longer hands
+// packets to RoutineReadFromTUN, so only the router can get them there.
 func TestStackTunDialsOutbound(t *testing.T) {
 	t.Parallel()
-	tunAdapter := newTestTun(t, nil)
+	server, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+
+	ipcConfig := "private_key=" + strings.Repeat("cd", 32) +
+		"\npublic_key=" + strings.Repeat("ab", 32) +
+		"\nendpoint=" + server.LocalAddr().String() +
+		"\nallowed_ip=0.0.0.0/0"
+	awgDevice, err := NewDevice(context.Background(), logger.NOP(), testDialer{}, ipcConfig, DeviceOpts{
+		Address: []netip.Prefix{netip.MustParsePrefix("10.80.0.1/24")},
+		MTU:     1280,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer awgDevice.Close()
+	if err = awgDevice.Start(adapter.StartStateStart); err != nil {
+		t.Fatal(err)
+	}
 
 	go func() {
-		conn, err := tunAdapter.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
-		if err == nil {
+		conn, dialErr := awgDevice.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:80"))
+		if dialErr == nil {
 			conn.Close()
 		}
 	}()
 
-	bufs := [][]byte{make([]byte, 2048)}
-	sizes := make([]int, 1)
-	done := make(chan []byte, 1)
-	go func() {
-		count, err := tunAdapter.Read(bufs, sizes, 0)
-		if err != nil || count == 0 {
-			return
-		}
-		done <- bufs[0][:sizes[0]]
-	}()
-
-	select {
-	case packet := <-done:
-		source, _ := netip.AddrFromSlice(packet[12:16])
-		if source != netip.MustParseAddr("10.80.0.1") {
-			t.Fatalf("outbound packet sourced from %s, want the tunnel address", source)
-		}
-	case <-time.After(3 * time.Second):
-		t.Fatal("dial produced no outbound packet")
+	server.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, _, err = server.ReadFrom(make([]byte, 2048)); err != nil {
+		t.Fatalf("dial produced no handshake towards the peer: %v", err)
 	}
 }
 

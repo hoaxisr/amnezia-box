@@ -123,12 +123,39 @@ func (d *Device) Start(stage adapter.StartStage) error {
 	if err := d.attachPeerResolvers(); err != nil {
 		return err
 	}
+	peers, err := d.configuredPeers()
+	if err != nil {
+		return err
+	}
+	d.tun.SetDevice(d.awgDevice, peers)
 
 	if err := d.awgDevice.Up(); err != nil {
 		return err
 	}
 	d.started.Store(true)
 	return nil
+}
+
+// configuredPeers returns the peers the IPC config created, in config order.
+// Like attachPeerResolvers, it must run after IpcSet.
+func (d *Device) configuredPeers() ([]*device.Peer, error) {
+	var peers []*device.Peer
+	for _, line := range strings.Split(d.ipcConfig, "\n") {
+		publicKeyHex, found := strings.CutPrefix(line, "public_key=")
+		if !found {
+			continue
+		}
+		var publicKey device.NoisePublicKey
+		if err := publicKey.FromHex(publicKeyHex); err != nil {
+			return nil, E.Cause(err, "parse peer public key")
+		}
+		peer := d.awgDevice.LookupPeer(publicKey)
+		if peer == nil {
+			return nil, E.New("missing configured peer ", publicKeyHex)
+		}
+		peers = append(peers, peer)
+	}
+	return peers, nil
 }
 
 // attachPeerResolvers must run after IpcSet: the peers it looks up are created
