@@ -75,10 +75,11 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 	return inboundInstance, nil
 }
 
-func (h *Inbound) Start(stage adapter.StartStage) error {
+func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	if stage != adapter.StartStateStart {
 		return nil
 	}
+	scope.Add(h.Close)
 
 	h.mu.Lock()
 	defer h.mu.Unlock()

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/log"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/logger"
 	M "github.com/sagernet/sing/common/metadata"
@@ -207,7 +208,7 @@ func TestStackTunDialsOutbound(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer awgDevice.Close()
-	if err = awgDevice.Start(adapter.StartStateStart); err != nil {
+	if err = awgDevice.Start(adapter.StartStateStart, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -228,4 +229,36 @@ func TestStackTunDialsOutbound(t *testing.T) {
 // a real tun underneath the AWG device.
 func newUnstartedTun(address []netip.Prefix, mtu uint32) (tunAdapter, error) {
 	return newNonIntegratedTun(context.Background(), address, mtu, nil, 0, nil, logger.NOP())
+}
+
+// TestDeviceScopeCloseStopsDevice guards the scoped lifecycle: nothing calls
+// Device.Close directly any more, so the device must register it with the
+// scope or it outlives its endpoint.
+func TestDeviceScopeCloseStopsDevice(t *testing.T) {
+	t.Parallel()
+	ipcConfig := "private_key=" + strings.Repeat("cd", 32) +
+		"\npublic_key=" + strings.Repeat("ab", 32) +
+		"\nallowed_ip=0.0.0.0/0"
+	awgDevice, err := NewDevice(context.Background(), logger.NOP(), testDialer{}, ipcConfig, DeviceOpts{
+		Address: []netip.Prefix{netip.MustParsePrefix("10.81.0.1/24")},
+		MTU:     1280,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	scope := adapter.NewScope(context.Background(), log.NewNOPFactory().Logger())
+	for _, stage := range []adapter.StartStage{adapter.StartStateInitialize, adapter.StartStateStart} {
+		if err = awgDevice.Start(stage, scope); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !awgDevice.Started() {
+		t.Fatal("device not started")
+	}
+	if err = scope.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if awgDevice.Started() {
+		t.Fatal("scope close left the device running")
+	}
 }
