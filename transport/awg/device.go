@@ -102,8 +102,13 @@ func NewDevice(ctx context.Context, logger logger.ContextLogger, dial network.Di
 	}, nil
 }
 
-func (d *Device) Start(stage adapter.StartStage) error {
-	if stage != adapter.StartStateStart {
+func (d *Device) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	switch stage {
+	case adapter.StartStateInitialize:
+		scope.Add(d.Close)
+		return nil
+	case adapter.StartStateStart:
+	default:
 		return nil
 	}
 

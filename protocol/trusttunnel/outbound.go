@@ -129,8 +129,12 @@ func (h *Outbound) InterfaceUpdated() {
 	h.client.ResetConnections()
 }
 
-func (h *Outbound) Close() error {
-	return common.Close(
-		common.PtrOrNil(h.client),
-	)
+func (h *Outbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+	if stage != adapter.StartStateInitialize {
+		return nil
+	}
+	scope.Add(func() error {
+		return common.Close(common.PtrOrNil(h.client))
+	})
+	return nil
 }
