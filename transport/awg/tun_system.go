@@ -2,16 +2,19 @@ package awg
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/dialer"
+	"github.com/sagernet/sing-box/common/kernelports"
 	"github.com/sagernet/sing-box/option"
 	tun "github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
@@ -29,6 +32,8 @@ type systemTun struct {
 	events    chan awgTun.Event
 	name      string
 	dialer    network.Dialer
+	logger    logger.Logger
+	ports     atomic.Pointer[kernelports.Pool]
 	closeOnce sync.Once
 }
 
@@ -53,8 +58,8 @@ func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []neti
 		Name: name,
 		GSO:  true,
 		MTU:  uint32(mtu),
-		// The default DNS mode is hijack; this is a transport interface, not the
-		// system tun, so it must not touch DNS (mirrors transport/wireguard).
+		// This is a transport interface, not the system tun, so it must not
+		// touch DNS whatever the default is (mirrors transport/wireguard).
 		DNSMode: tun.DNSModeDisabled,
 		Inet4Address: common.Filter(address, func(it netip.Prefix) bool {
 			return it.Addr().Is4()
@@ -88,6 +93,7 @@ func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []neti
 		singtun: singtun,
 		name:    name,
 		dialer:  dial,
+		logger:  logger,
 	}, nil
 }
 
@@ -105,6 +111,14 @@ func (t *systemTun) Start() error {
 	if batchTun, ok := t.singtun.(tun.LinuxTUN); ok && batchTun.BatchSize() > 1 {
 		t.batchTun = batchTun
 	}
+	// Forward NAT picks selector ports that kernel sockets of this endpoint
+	// must not collide with (mirrors transport/wireguard systemDevice).
+	ports, err := kernelports.New()
+	if err != nil {
+		t.logger.Warn(exceptions.Cause(err, "reserve selector ports"))
+	} else {
+		t.ports.Store(ports)
+	}
 
 	t.events <- awgTun.EventUp
 	return nil
@@ -115,15 +129,24 @@ func (t *systemTun) File() *os.File {
 }
 
 func (t *systemTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	var (
+		n   int
+		err error
+	)
 	if t.batchTun != nil {
-		return t.batchTun.BatchRead(bufs, offset-tun.PacketOffset, sizes)
+		n, err = t.batchTun.BatchRead(bufs, offset-tun.PacketOffset, sizes)
+	} else {
+		sizes[0], err = t.singtun.Read(bufs[0][offset-tun.PacketOffset:])
+		if err == nil {
+			n = 1
+		}
 	}
-	n, err := t.singtun.Read(bufs[0][offset-tun.PacketOffset:])
-	if err != nil {
-		return 0, err
+	// amneziawg-go drops the batch on its own ErrTooManySegments and closes
+	// the device on any other read error.
+	if errors.Is(err, tun.ErrTooManySegments) {
+		err = awgTun.ErrTooManySegments
 	}
-	sizes[0] = n
-	return 1, nil
+	return n, err
 }
 
 func (t *systemTun) Write(bufs [][]byte, offset int) (int, error) {
@@ -158,8 +181,18 @@ func (t *systemTun) Close() error {
 	t.closeOnce.Do(func() {
 		close(t.events)
 		err = t.singtun.Close()
+		if ports := t.ports.Load(); ports != nil {
+			err = exceptions.Errors(err, ports.Close())
+		}
 	})
 	return err
+}
+
+func (t *systemTun) UpstreamPort() any {
+	if ports := t.ports.Load(); ports != nil {
+		return ports
+	}
+	return nil
 }
 
 func (t *systemTun) BatchSize() int {

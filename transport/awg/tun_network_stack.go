@@ -113,6 +113,10 @@ func (t *stackTun) bindAddress(destination M.Socksaddr) (netip.Addr, error) {
 	return t.inet6Address, nil
 }
 
+func (t *stackTun) UpstreamPort() any {
+	return t.stack
+}
+
 func (t *stackTun) SetDevice(device *device.Device, peers []*device.Peer) {
 	t.router.setPeers(device.AllowedIPs(), peers)
 }

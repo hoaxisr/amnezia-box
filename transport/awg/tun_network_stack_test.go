@@ -262,3 +262,27 @@ func TestDeviceScopeCloseStopsDevice(t *testing.T) {
 		t.Fatal("scope close left the device running")
 	}
 }
+
+// TestDeviceUpstreamReachesStackSelector guards the forward NAT wiring: sing-tun
+// walks UpstreamPort until it finds ReserveSelector, so the stack's own sockets
+// and forwarded flows never share a selector port. Without the chain the NAT
+// silently falls back to its default ranges.
+func TestDeviceUpstreamReachesStackSelector(t *testing.T) {
+	tunAdapter, err := newUnstartedTun([]netip.Prefix{netip.MustParsePrefix("10.80.0.1/24")}, 1280)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tunAdapter.Close()
+	var port any = &Device{tun: tunAdapter}
+	for port != nil {
+		if _, ok := port.(tun.PortWithSelectorReservation); ok {
+			return
+		}
+		upstream, ok := port.(tun.PortWithUpstream)
+		if !ok {
+			break
+		}
+		port = upstream.UpstreamPort()
+	}
+	t.Fatalf("UpstreamPort chain ends at %T without ReserveSelector", port)
+}
