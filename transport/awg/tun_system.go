@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"sync"
 
 	"github.com/amnezia-vpn/amneziawg-go/v3/device"
 	awgTun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
@@ -22,11 +23,13 @@ import (
 )
 
 type systemTun struct {
-	mtu     uint32
-	singtun tun.Tun
-	events  chan awgTun.Event
-	name    string
-	dialer  network.Dialer
+	mtu       uint32
+	singtun   tun.Tun
+	batchTun  tun.LinuxTUN
+	events    chan awgTun.Event
+	name      string
+	dialer    network.Dialer
+	closeOnce sync.Once
 }
 
 func newSystemTun(ctx context.Context, address []netip.Prefix, allowedIps []netip.Prefix, excludedIps []netip.Prefix, mtu uint32, logger logger.Logger) (tunAdapter, error) {
@@ -96,6 +99,10 @@ func (t *systemTun) Start() error {
 		return exceptions.Cause(err, "start tunnel")
 	}
 
+	if batchTun, ok := t.singtun.(tun.LinuxTUN); ok && batchTun.BatchSize() > 1 {
+		t.batchTun = batchTun
+	}
+
 	t.events <- awgTun.EventUp
 	return nil
 }
@@ -105,6 +112,9 @@ func (t *systemTun) File() *os.File {
 }
 
 func (t *systemTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
+	if t.batchTun != nil {
+		return t.batchTun.BatchRead(bufs, offset-tun.PacketOffset, sizes)
+	}
 	n, err := t.singtun.Read(bufs[0][offset-tun.PacketOffset:])
 	if err != nil {
 		return 0, err
@@ -114,6 +124,9 @@ func (t *systemTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {
 }
 
 func (t *systemTun) Write(bufs [][]byte, offset int) (int, error) {
+	if t.batchTun != nil {
+		return t.batchTun.BatchWrite(bufs, offset)
+	}
 	for _, buf := range bufs {
 		common.ClearArray(buf[offset-tun.PacketOffset : offset])
 		tun.PacketFillHeader(buf[offset-tun.PacketOffset:], tun.PacketIPVersion(buf[offset:]))
@@ -138,11 +151,18 @@ func (t *systemTun) Events() <-chan awgTun.Event {
 }
 
 func (t *systemTun) Close() error {
-	close(t.events)
-	return nil
+	var err error
+	t.closeOnce.Do(func() {
+		close(t.events)
+		err = t.singtun.Close()
+	})
+	return err
 }
 
 func (t *systemTun) BatchSize() int {
+	if t.batchTun != nil {
+		return t.batchTun.BatchSize()
+	}
 	return 1
 }
 

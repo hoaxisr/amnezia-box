@@ -5,6 +5,7 @@ icon: material/alert-decagram
 #### 1.15.0-alpha.9
 
 * Update NaiveProxy to 154.0.8037.49-2
+* Fix AWG integrated TUN packet framing with GSO and release the interface on shutdown
 * Fixes and improvements
 
 #### 1.15.0-alpha.8
