@@ -43,6 +43,7 @@ func (f *fakeTun) MTU() (int, error)                        { return 1408, nil }
 func (f *fakeTun) Name() (string, error)                    { return "fake", nil }
 func (f *fakeTun) Events() <-chan awgTun.Event              { return nil }
 func (f *fakeTun) SetDevice(*device.Device, []*device.Peer) {}
+func (f *fakeTun) UpstreamPort() any                        { return nil }
 func (f *fakeTun) BatchSize() int                           { return 1 }
 
 func (f *fakeTun) Read(bufs [][]byte, sizes []int, offset int) (int, error) {

@@ -12,4 +12,5 @@ type tunAdapter interface {
 	awgTun.Device
 	adapter.SimpleLifecycle
 	SetDevice(device *device.Device, peers []*device.Peer)
+	UpstreamPort() any
 }

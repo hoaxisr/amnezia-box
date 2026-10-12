@@ -23,6 +23,10 @@ func (d *Device) PortAddresses() (netip.Addr, netip.Addr) {
 	return v4, v6
 }
 
+func (d *Device) UpstreamPort() any {
+	return d.tun
+}
+
 func (d *Device) PortMTU() uint32 {
 	return d.mtu
 }
