@@ -315,7 +315,7 @@ func (t *Transport) fetchInterfaces() ([]control.Interface, error) {
 			interfaces = append(interfaces, *iface)
 		}
 	} else {
-		interfaces = common.Filter(finder.Interfaces(), isUsableInterface)
+		interfaces = common.Filter(finder.Interfaces(), isAutoInterface)
 	}
 	if len(interfaces) == 0 {
 		return nil, E.New("mdns: missing usable interface")
@@ -327,6 +327,13 @@ func isUsableInterface(iface control.Interface) bool {
 	return iface.Flags&net.FlagUp != 0 &&
 		iface.Flags&net.FlagMulticast != 0 &&
 		iface.Flags&net.FlagLoopback == 0
+}
+
+// isAutoInterface skips point-to-point links (tun, PPP, tunnels) unless named
+// explicitly, like Avahi's allow-point-to-point=no: a query multicast into a
+// tunnel that is routed back into sing-box loops forever.
+func isAutoInterface(iface control.Interface) bool {
+	return isUsableInterface(iface) && iface.Flags&net.FlagPointToPoint == 0
 }
 
 func interfaceFamilies(iface control.Interface) (supports4, supports6 bool) {
