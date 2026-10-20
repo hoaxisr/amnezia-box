@@ -317,10 +317,10 @@ func (g *LoadBalanceGroup) SelectCandidate(network string, destination M.Socksad
 		}
 		h := fnv.New32a()
 		h.Write([]byte(key))
-		idx := int(h.Sum32()) % len(alive)
+		idx := int(h.Sum32() % uint32(len(alive)))
 		return alive[idx], isTested
 	default: // round-robin
-		idx := int(atomic.AddUint32(&g.rrIndex, 1)-1) % len(alive)
+		idx := int((atomic.AddUint32(&g.rrIndex, 1) - 1) % uint32(len(alive)))
 		return alive[idx], isTested
 	}
 }
