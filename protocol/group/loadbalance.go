@@ -157,7 +157,7 @@ func (s *LoadBalance) DialContext(ctx context.Context, network string, destinati
 		return s.group.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 	s.logger.ErrorContext(ctx, err)
-	s.group.history.DeleteURLTestHistory(outbound.Tag())
+	s.group.history.DeleteURLTestHistory(RealTag(outbound, network))
 	return nil, err
 }
 
@@ -172,7 +172,7 @@ func (s *LoadBalance) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		return s.group.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 	s.logger.ErrorContext(ctx, err)
-	s.group.history.DeleteURLTestHistory(outbound.Tag())
+	s.group.history.DeleteURLTestHistory(RealTag(outbound, N.NetworkUDP))
 	return nil, err
 }
 
