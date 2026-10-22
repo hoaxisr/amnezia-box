@@ -445,6 +445,19 @@ func (b *urlTestBatch) test(outbounds []adapter.Outbound, link string, interval 
 				b.access.Unlock()
 				return nil, nil
 			})
+		case *Fallback:
+			// Own urlTest re-selects the nested fallback right after the
+			// check, as for *URLTest above; the generic branch would only
+			// test its members.
+			b.checked[tag] = true
+			b.groups = append(b.groups, nested)
+			b.batch.Go(tag, func() (any, error) {
+				nestedResult, _ := nested.group.urlTest(b.ctx, force)
+				b.access.Lock()
+				maps.Copy(b.result, nestedResult)
+				b.access.Unlock()
+				return nil, nil
+			})
 		case adapter.OutboundGroup:
 			b.checked[tag] = true
 			b.groups = append(b.groups, nested)
