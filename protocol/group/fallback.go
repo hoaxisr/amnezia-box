@@ -95,6 +95,9 @@ func (s *Fallback) All() []string {
 }
 
 func (s *Fallback) Selected(network string) adapter.Outbound {
+	if s.group == nil {
+		return nil // до Start: группа ещё не собрана
+	}
 	var outbound adapter.Outbound
 	if network == N.NetworkUDP {
 		outbound = s.group.selectedOutboundUDP.Load()
@@ -108,6 +111,9 @@ func (s *Fallback) Selected(network string) adapter.Outbound {
 }
 
 func (s *Fallback) AttachConnection(closer io.Closer) func() {
+	if s.group == nil {
+		return func() {}
+	}
 	s.group.Touch()
 	return s.group.interruptGroup.Add(closer, true)
 }
@@ -181,9 +187,7 @@ func (s *Fallback) DialContext(ctx context.Context, network string, destination 
 		return s.group.interruptGroup.NewConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 	s.logger.ErrorContext(ctx, err)
-	s.group.history.DeleteURLTestHistory(RealTag(outbound, network))
-	// Re-evaluate immediately upon dial failure
-	s.group.performUpdateCheck()
+	s.group.failed(ctx, RealTag(outbound, network))
 	return nil, err
 }
 
@@ -201,9 +205,7 @@ func (s *Fallback) ListenPacket(ctx context.Context, destination M.Socksaddr) (n
 		return s.group.interruptGroup.NewPacketConn(conn, interrupt.IsExternalConnectionFromContext(ctx)), nil
 	}
 	s.logger.ErrorContext(ctx, err)
-	s.group.history.DeleteURLTestHistory(RealTag(outbound, N.NetworkUDP))
-	// Re-evaluate immediately upon listen failure
-	s.group.performUpdateCheck()
+	s.group.failed(ctx, RealTag(outbound, N.NetworkUDP))
 	return nil, err
 }
 
@@ -270,11 +272,12 @@ func (g *FallbackGroup) PostStart() {
 }
 
 func (g *FallbackGroup) Touch() {
+	// started пишется в PostStart под access — читаем под ним же.
+	g.access.Lock()
+	defer g.access.Unlock()
 	if !g.started {
 		return
 	}
-	g.access.Lock()
-	defer g.access.Unlock()
 	if g.ticker != nil {
 		g.lastActive.Store(time.Now())
 		return
@@ -299,31 +302,37 @@ func (g *FallbackGroup) Close() error {
 	return nil
 }
 
-// Select picks the first healthy outbound in array order (priority fallback).
-// Fail-Open: If no nodes have a verified positive delay yet, it defaults to the first
-// available node in the array and asynchronously triggers an out-of-order check.
+// Select picks the first member with URL test history, in definition order
+// (priority fallback). Fail-open: with no tested member it returns the first
+// member supporting network; the next check stays on the ticker, so a dead
+// group does not re-test every member on each dial.
 func (g *FallbackGroup) Select(network string) (adapter.Outbound, bool) {
+	var first adapter.Outbound
 	for _, detour := range g.outbounds {
 		if !common.Contains(detour.Network(), network) {
 			continue
 		}
-		history := g.history.LoadURLTestHistory(RealTag(detour, network))
-		if history != nil && history.Delay > 0 {
-			// Found the first healthy node in strict priority order!
+		if g.history.LoadURLTestHistory(RealTag(detour, network)) != nil {
 			return detour, true
 		}
-	}
-
-	// Fail-Open on startup or total loss: pick the first supported outbound in order
-	for _, detour := range g.outbounds {
-		if common.Contains(detour.Network(), network) {
-			if g.started && !g.checking.Load() {
-				go g.CheckOutbounds(g.ctx, false)
-			}
-			return detour, false
+		if first == nil {
+			first = detour
 		}
 	}
-	return nil, false
+	return first, false
+}
+
+// failed drops the member's URL test history and re-selects at once. A dial
+// the caller cancelled says nothing about the member, so it is ignored.
+// Routed connections never get here: the router resolves the group through
+// Selected and dials the member itself, so for them failover waits for the
+// next check, as with urltest. This path covers detour and DNS dials.
+func (g *FallbackGroup) failed(ctx context.Context, tag string) {
+	if ctx.Err() != nil {
+		return
+	}
+	g.history.DeleteURLTestHistory(tag)
+	g.performUpdateCheck()
 }
 
 func (g *FallbackGroup) loopCheck(ticker *time.Ticker, closeChan <-chan struct{}) {

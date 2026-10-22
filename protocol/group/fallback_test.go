@@ -8,8 +8,8 @@ import (
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/common/interrupt"
 	"github.com/sagernet/sing-box/common/urltest"
-	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -118,11 +118,56 @@ func TestFallback_PriorityAndFailover(t *testing.T) {
 	}
 }
 
-func TestFallback_DisplayNameAndType(t *testing.T) {
-	if C.TypeFallback != "fallback" {
-		t.Fatalf("expected TypeFallback = 'fallback', got %q", C.TypeFallback)
+// A failed dial on the selected member must switch the group to the next
+// tested member without waiting for the ticker.
+func TestFallback_DialFailureFailsOver(t *testing.T) {
+	out1 := newMockTestOutbound("primary")
+	out2 := newMockTestOutbound("backup")
+	history := urltest.NewHistoryStorage()
+	history.StoreURLTestHistory("primary", &adapter.URLTestHistory{Time: time.Now(), Delay: 50})
+	history.StoreURLTestHistory("backup", &adapter.URLTestHistory{Time: time.Now(), Delay: 50})
+	g := &FallbackGroup{
+		outbounds:      []adapter.Outbound{out1, out2},
+		history:        history,
+		interruptGroup: interrupt.NewGroup(),
 	}
-	if disp := C.ProxyDisplayName(C.TypeFallback); disp != "Fallback" {
-		t.Fatalf("expected DisplayName = 'Fallback', got %q", disp)
+	g.performUpdateCheck()
+	f := &Fallback{group: g, logger: log.NewNOPFactory().Logger()}
+
+	if _, err := f.DialContext(context.Background(), N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:443")); err == nil {
+		t.Fatal("expected the primary dial error")
 	}
+	if got := g.selectedOutboundTCP.Load(); got != out2 {
+		t.Fatalf("after primary failure selected %v, want backup", got)
+	}
+}
+
+// A dial the caller cancelled must not demote the member.
+func TestFallback_CancelledDialKeepsMember(t *testing.T) {
+	out1 := newMockTestOutbound("primary")
+	history := urltest.NewHistoryStorage()
+	history.StoreURLTestHistory("primary", &adapter.URLTestHistory{Time: time.Now(), Delay: 50})
+	g := &FallbackGroup{
+		outbounds:      []adapter.Outbound{out1, newMockTestOutbound("backup")},
+		history:        history,
+		interruptGroup: interrupt.NewGroup(),
+	}
+	g.performUpdateCheck()
+	f := &Fallback{group: g, logger: log.NewNOPFactory().Logger()}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, _ = f.DialContext(ctx, N.NetworkTCP, M.ParseSocksaddr("1.1.1.1:443"))
+	if history.LoadURLTestHistory("primary") == nil {
+		t.Fatal("cancelled dial dropped the primary's history")
+	}
+}
+
+// Clash API и RealTag могут спросить группу до Start.
+func TestFallback_SelectedBeforeStart(t *testing.T) {
+	f := &Fallback{}
+	if f.Selected(N.NetworkTCP) != nil {
+		t.Fatal("Selected before Start must be nil")
+	}
+	f.AttachConnection(nil)()
 }

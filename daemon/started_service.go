@@ -729,9 +729,14 @@ func (s *StartedService) URLTest(ctx context.Context, request *URLTestRequest) (
 	}
 	historyStorage := boxService.urlTestHistoryStorage
 	urlTest, isURLTest := outbound.(*group.URLTest)
+	fallback, isFallback := outbound.(*group.Fallback)
 	outboundGroup, isOutboundGroup := outbound.(adapter.OutboundGroup)
 	if isURLTest {
 		go urlTest.CheckOutbounds()
+	} else if isFallback {
+		// CheckOutbounds перевыбирает группу после проверки, голый
+		// URLTestOutbounds ниже — нет.
+		go fallback.CheckOutbounds()
 	} else if isOutboundGroup {
 		outbounds := common.FilterNotNil(common.Map(outboundGroup.All(), func(it string) adapter.Outbound {
 			itOutbound, _ := boxService.outboundManager.Outbound(it)
