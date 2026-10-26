@@ -13,7 +13,7 @@ require (
 	github.com/cretz/bine v0.2.0
 	github.com/database64128/tfo-go/v2 v2.3.2
 	github.com/dblohm7/wingoes v0.0.0-20240119213807-a09d6be7affa
-	github.com/enfein/mieru/v3 v3.38.0
+	github.com/enfein/mieru/v3 v3.39.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/render v1.0.3
 	github.com/godbus/dbus/v5 v5.2.2
@@ -203,6 +203,6 @@ require (
 
 replace github.com/amnezia-vpn/amneziawg-go/v3 => github.com/hoaxisr/amneziawg-go/v3 v3.1.0-awgm.3
 
-replace github.com/sagernet/sing => github.com/hoaxisr/sing v0.9.7-awgm.1
+replace github.com/sagernet/sing => github.com/hoaxisr/sing v0.9.7-awgm.2
 
-replace github.com/sagernet/sing-tun => github.com/hoaxisr/sing-tun v0.9.7-awgm.2
+replace github.com/sagernet/sing-tun => github.com/hoaxisr/sing-tun v0.9.7-awgm.3
