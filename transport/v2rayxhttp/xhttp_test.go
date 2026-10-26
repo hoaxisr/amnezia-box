@@ -1,8 +1,12 @@
 package xhttp
 
 import (
+	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/sagernet/sing-box/common/xray/buf"
@@ -69,5 +73,34 @@ func TestWaitReadCloserSetAfterCloseClosesBody(t *testing.T) {
 	}
 	if _, err := w.Read(make([]byte, 1)); err != io.ErrClosedPipe {
 		t.Fatalf("Read после Close: got %v, want %v", err, io.ErrClosedPipe)
+	}
+}
+
+// Упавший запрос не рвёт соединения клиента: на нём могут жить соседние
+// сессии xmux. Клиент только перестаёт выдаваться (IsClosed), а соединения
+// освобождает Close при вытеснении (F730, как Xray closed.Store(true)).
+func TestFailedRequestMarksClientWithoutClosingIt(t *testing.T) {
+	c := &DefaultDialerClient{
+		options: &option.V2RayXHTTPBaseOptions{},
+		client: &http.Client{Transport: &http.Transport{
+			DialContext: func(context.Context, string, string) (net.Conn, error) {
+				return nil, errors.New("dial refused")
+			},
+		}},
+		httpVersion:   "2",
+		uploadRawPool: &sync.Pool{},
+	}
+	if err := c.PostPacket(context.Background(), "http://example.com/", "session", "0", buf.MergeBytes(nil, []byte("x"))); err == nil {
+		t.Fatal("PostPacket: want error")
+	}
+	if !c.IsClosed() {
+		t.Fatal("после упавшего запроса клиент всё ещё выдаётся xmux")
+	}
+	if c.closed {
+		t.Fatal("упавший запрос закрыл соединения клиента — соседние сессии оборваны")
+	}
+	c.Close()
+	if !c.closed {
+		t.Fatal("Close после упавшего запроса не освободил соединения")
 	}
 }

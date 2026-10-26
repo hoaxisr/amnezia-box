@@ -45,7 +45,11 @@ type DefaultDialerClient struct {
 	uploadRawPool  *sync.Pool
 	dialUploadConn func(ctxInner context.Context) (net.Conn, error)
 
-	mtx sync.RWMutex
+	// broken — запрос через клиента упал: xmux больше его не выдаёт, но живые
+	// сессии на нём доживают. Соединения освобождает Close при вытеснении,
+	// когда сессий не осталось (Xray ставит в этом месте closed, F730).
+	broken bool
+	mtx    sync.RWMutex
 }
 
 type clientConnPool struct {
@@ -92,7 +96,13 @@ func (c *DefaultDialerClient) Close() {
 func (c *DefaultDialerClient) IsClosed() bool {
 	c.mtx.RLock()
 	defer c.mtx.RUnlock()
-	return c.closed
+	return c.closed || c.broken
+}
+
+func (c *DefaultDialerClient) markBroken() {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+	c.broken = true
 }
 
 func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessionId string, body io.Reader, uploadOnly bool) (wrc io.ReadCloser, remoteAddr, localAddr net.Addr, err error) {
@@ -121,7 +131,7 @@ func (c *DefaultDialerClient) OpenStream(ctx context.Context, url string, sessio
 		resp, err := c.client.Do(req)
 		if err != nil {
 			if !uploadOnly { // stream-down is enough
-				c.Close()
+				c.markBroken()
 			}
 			gotConn.Close()
 			common.Close(body)
@@ -151,7 +161,7 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 	if c.httpVersion != "1.1" {
 		resp, err := c.client.Do(req)
 		if err != nil {
-			c.Close()
+			c.markBroken()
 			return err
 		}
 		io.Copy(io.Discard, resp.Body)
@@ -187,7 +197,7 @@ func (c *DefaultDialerClient) PostPacket(ctx context.Context, url string, sessio
 				if h1UploadConn.UnreadedResponsesCount > 0 {
 					resp, err := http.ReadResponse(h1UploadConn.RespBufReader, req)
 					if err != nil {
-						c.Close()
+						c.markBroken()
 						return fmt.Errorf("error while reading response: %s", err.Error())
 					}
 					io.Copy(io.Discard, resp.Body)
