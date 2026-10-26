@@ -325,8 +325,10 @@ func (g *FallbackGroup) Select(network string) (adapter.Outbound, bool) {
 // failed drops the member's URL test history and re-selects at once. A dial
 // the caller cancelled says nothing about the member, so it is ignored.
 // Routed connections never get here: the router resolves the group through
-// Selected and dials the member itself, so for them failover waits for the
-// next check, as with urltest. This path covers detour and DNS dials.
+// Selected and dials the member itself. Since 1.15.0-alpha.13 the router drops
+// the member's URL test history on a failed dial (a cancelled one too), but
+// the selection stays cached, so for routed connections failover still waits
+// for the next check. This path covers detour and DNS dials.
 func (g *FallbackGroup) failed(ctx context.Context, tag string) {
 	if ctx.Err() != nil {
 		return
