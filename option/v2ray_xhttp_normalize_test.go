@@ -49,3 +49,18 @@ func TestXHTTPNormalizedPathTrailingSlashOnlyForPathPlacement(t *testing.T) {
 		}
 	}
 }
+
+// Без xmux — умолчание Xray: три соединения, maxConcurrency не задан (вместе
+// с maxConnections он запрещён).
+func TestXHTTPDefaultXmuxIsThreeConnections(t *testing.T) {
+	o := V2RayXHTTPBaseOptions{XPaddingBytes: Xbadoption.Range{From: 100, To: 1000}}
+	if err := checkV2RayXHTTPBaseOptions("auto", &o); err != nil {
+		t.Fatal(err)
+	}
+	if got := o.Xmux.MaxConnections; got.From != 3 || got.To != 3 {
+		t.Errorf("max_connections: got %+v, want 3-3", got)
+	}
+	if got := o.Xmux.MaxConcurrency; got.To != 0 {
+		t.Errorf("max_concurrency: got %+v, want unset", got)
+	}
+}

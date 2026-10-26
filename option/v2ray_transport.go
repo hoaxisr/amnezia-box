@@ -313,9 +313,11 @@ func checkV2RayXHTTPBaseOptions(mode string, options *V2RayXHTTPBaseOptions) err
 	}
 
 	if options.Xmux == nil {
+		// Умолчание Xray (18e2839, против ТСПУ): три соединения на все сессии
+		// вместо отдельного TCP+TLS на каждую (maxConcurrency 1).
 		options.Xmux = &V2RayXHTTPXmuxOptions{}
-		options.Xmux.MaxConcurrency.From = 1
-		options.Xmux.MaxConcurrency.To = 1
+		options.Xmux.MaxConnections.From = 3
+		options.Xmux.MaxConnections.To = 3
 		options.Xmux.HMaxRequestTimes.From = 600
 		options.Xmux.HMaxRequestTimes.To = 900
 		options.Xmux.HMaxReusableSecs.From = 1800
