@@ -13,12 +13,16 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 )
 
+var errClientHelloCaptured = E.New("client hello captured")
+
 func TLSClientHello(ctx context.Context, metadata *adapter.InboundContext, reader io.Reader) error {
 	var clientHello *tls.ClientHelloInfo
+	// Сниффу нужен только ClientHello: без ошибки здесь crypto/tls продолжит
+	// handshake и посчитает обмен ключами на каждое соединение.
 	err := tls.Server(bufio.NewReadOnlyConn(reader), &tls.Config{
 		GetConfigForClient: func(argHello *tls.ClientHelloInfo) (*tls.Config, error) {
 			clientHello = argHello
-			return nil, nil
+			return nil, errClientHelloCaptured
 		},
 	}).HandshakeContext(ctx)
 	if clientHello != nil {
