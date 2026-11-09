@@ -12,6 +12,7 @@ import (
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing-box/protocol/vless/encryption"
 	"github.com/sagernet/sing-box/transport/v2ray"
 	"github.com/sagernet/sing-vmess/packetaddr"
 	"github.com/sagernet/sing-vmess/vless"
@@ -45,6 +46,7 @@ type Outbound struct {
 	transport       adapter.V2RayClientTransport
 	packetAddr      bool
 	xudp            bool
+	encryption      *encryption.ClientInstance
 }
 
 func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.VLESSOutboundOptions) (adapter.Outbound, error) {
@@ -91,6 +93,15 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 		default:
 			return nil, E.New("unknown packet encoding: ", *options.PacketEncoding)
 		}
+	}
+	outbound.encryption, err = encryption.NewClient(options.Encryption)
+	if err != nil {
+		return nil, E.Cause(err, "vless encryption")
+	}
+	// Vision в sing-vmess читает буферы TLS-соединения через reflect и поверх
+	// CommonConn работать не умеет; у Xray такое сочетание есть.
+	if outbound.encryption != nil && options.Flow != "" {
+		return nil, E.New("vless encryption with flow is not supported")
 	}
 	outbound.client, err = vless.NewClient(options.UUID, options.Flow, logger)
 	if err != nil {
@@ -201,6 +212,10 @@ func (h *vlessDialer) DialContext(ctx context.Context, network string, destinati
 	if err != nil {
 		return nil, err
 	}
+	conn, err = h.encryptionHandshake(conn)
+	if err != nil {
+		return nil, err
+	}
 	switch N.NetworkName(network) {
 	case N.NetworkTCP:
 		h.logger.InfoContext(ctx, "outbound connection to ", destination)
@@ -244,6 +259,10 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 		common.Close(conn)
 		return nil, err
 	}
+	conn, err = h.encryptionHandshake(conn)
+	if err != nil {
+		return nil, err
+	}
 	if h.xudp {
 		return h.client.DialEarlyXUDPPacketConn(conn, destination)
 	} else if h.packetAddr {
@@ -258,4 +277,16 @@ func (h *vlessDialer) ListenPacket(ctx context.Context, destination M.Socksaddr)
 	} else {
 		return h.client.DialEarlyPacketConn(conn, destination)
 	}
+}
+
+func (h *vlessDialer) encryptionHandshake(conn net.Conn) (net.Conn, error) {
+	if h.encryption == nil {
+		return conn, nil
+	}
+	encryptedConn, err := h.encryption.Handshake(conn)
+	if err != nil {
+		conn.Close()
+		return nil, E.Cause(err, "vless encryption handshake")
+	}
+	return encryptedConn, nil
 }

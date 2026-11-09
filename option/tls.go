@@ -251,9 +251,11 @@ type OutboundUTLSOptions struct {
 	Fingerprint string `json:"fingerprint,omitempty" enum:"chrome_psk,chrome_psk_shuffle,chrome_padding_psk_shuffle,chrome_pq,chrome_pq_psk,chrome,firefox,edge,safari,360,qq,ios,android,random,randomized"`
 }
 
+// SupportX25519MLKEM768: нет поля — шара X25519MLKEM768 уходит, как у Xray;
+// false — вырезается.
 type OutboundRealityOptions struct {
 	Enabled               bool   `json:"enabled,omitempty"`
 	PublicKey             string `json:"public_key,omitempty"`
 	ShortID               string `json:"short_id,omitempty"`
-	SupportX25519MLKEM768 bool   `json:"support_x25519mlkem768,omitempty"`
+	SupportX25519MLKEM768 *bool  `json:"support_x25519mlkem768,omitempty"`
 }

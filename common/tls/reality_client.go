@@ -28,6 +28,7 @@ import (
 	"unsafe"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/tlsfragment"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common"
@@ -86,7 +87,7 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 		return nil, E.New("invalid short_id")
 	}
 
-	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID, options.Reality.SupportX25519MLKEM768}
+	var config Config = &RealityClientConfig{ctx, uClient.(*UTLSClientConfig), publicKey, shortID, options.Reality.SupportX25519MLKEM768 == nil || *options.Reality.SupportX25519MLKEM768}
 	if options.KernelRx || options.KernelTx {
 		if !C.IsLinux {
 			return nil, E.New("kTLS is only supported on Linux")
@@ -141,18 +142,22 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	uConfig.InsecureSkipVerify = true
 	uConfig.SessionTicketsDisabled = true
 	uConfig.VerifyPeerCertificate = verifier.VerifyPeerCertificate
+	// Апстрим REALITY фрагментацию молча пропускал; у uTLS-клиента она есть.
+	if e.uClient.fragment || e.uClient.recordFragment {
+		conn = tf.NewConn(conn, ctx, e.uClient.fragment, e.uClient.recordFragment, e.uClient.fragmentFallbackDelay)
+	}
 	uConn := utls.UClient(conn, uConfig, e.uClient.id)
 	verifier.UConn = uConn
 	err := uConn.BuildHandshakeState()
 	if err != nil {
 		return nil, err
 	}
-	// X25519MLKEM768 вырезается, как в апстриме и в mihomo: с этой шарой
+	// Шара X25519MLKEM768 уходит по умолчанию, как у Xray-клиента: сервер
+	// REALITY с 8cdf7bf9 (Xray v26.9.8+) без неё клиента отвергает.
+	// support_x25519mlkem768: false вырезает её, как апстрим и mihomo: такой
 	// ClientHello (~1.7 КБ) не влезает в один TCP-сегмент, и на российских
-	// сетях такие соединения периодически глушатся (awg-manager#944).
-	// Сервер REALITY с 8cdf7bf9 (Xray v26.9.8+) без неё клиента отвергает,
-	// поэтому для таких серверов шару включает флаг — тот же, что
-	// support-x25519mlkem768 у mihomo. Шара есть только у отпечатка chrome.
+	// сетях его глушат (awg-manager#944); против этого — finalmask fragment.
+	// В utls шара есть только у отпечатка chrome.
 	if !e.supportX25519MLKEM768 {
 		for _, extension := range uConn.Extensions {
 			if ce, ok := extension.(*utls.SupportedCurvesExtension); ok {
@@ -196,12 +201,12 @@ func (e *RealityClientConfig) ClientHandshake(ctx context.Context, conn net.Conn
 	// Версия клиента, которую сервер REALITY читает из SessionId и сверяет с
 	// Min/MaxClientVer. Xray-клиент штампует сюда свою версию ядра, оператор
 	// может задать minClientVer до текущего Xray — держим номер актуального
-	// релиза Xray-core (26.9.9). Апстримные 1.8.1 отвергал уже встроенный
+	// релиза Xray-core (26.10.31). Апстримные 1.8.1 отвергал уже встроенный
 	// минимум 26.3.27 (снят в 26.9.x, но у операторов остался в конфигах).
 	// Апстрим sing-box значение не поднимал — при ребейзе правку сохранить.
 	hello.SessionId[0] = 26
-	hello.SessionId[1] = 9
-	hello.SessionId[2] = 9
+	hello.SessionId[1] = 10
+	hello.SessionId[2] = 31
 	binary.BigEndian.PutUint32(hello.SessionId[4:], uint32(time.Now().Unix()))
 	copy(hello.SessionId[8:], e.shortID[:])
 	if debug.Enabled {
