@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/finalmask"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/experimental/deprecated"
 	"github.com/sagernet/sing-box/option"
@@ -97,6 +98,13 @@ func NewWithOptions(options Options) (N.Dialer, error) {
 			dnsQueryOptions,
 			time.Duration(dialOptions.FallbackDelay),
 		)
+	}
+	if dialOptions.FinalMask != nil {
+		// TFO отдаёт первый Write в SYN, нарезка ClientHello там бессмысленна.
+		if dialOptions.TCPFastOpen {
+			return nil, E.New("finalmask is not compatible with tcp_fast_open")
+		}
+		return finalmask.NewDialer(dialer, dialOptions.FinalMask)
 	}
 	return dialer, nil
 }
