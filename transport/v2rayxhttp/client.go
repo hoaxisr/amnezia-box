@@ -4,6 +4,7 @@ import (
 	"context"
 	gotls "crypto/tls"
 	"io"
+	"math/rand/v2"
 	"net/http"
 	"net/http/httptrace"
 	"net/url"
@@ -47,6 +48,7 @@ func NewClient(ctx context.Context, logger log.ContextLogger, dialer N.Dialer, s
 	if options.Mode == "" {
 		return nil, E.New("mode is not set")
 	}
+	options.Mode = resolveMode(options.Mode, tls.IsRealityClient(tlsConfig), options.Download != nil)
 	if tlsConfig != nil && len(tlsConfig.NextProtos()) == 0 {
 		tlsConfig.SetNextProtos([]string{"h2"})
 	}
@@ -120,8 +122,7 @@ func (c *Client) DialContext(ctx context.Context) (net.Conn, error) {
 	mode := c.options.Mode
 	sessionId := ""
 	if c.options.Mode != "stream-one" {
-		sessionIdUuid := uuid.New()
-		sessionId = sessionIdUuid.String()
+		sessionId = generateSessionID(&c.options.V2RayXHTTPBaseOptions)
 	}
 	requestURL := c.baseRequestURL
 	requestURL2 := c.baseRequestURL2
@@ -384,4 +385,35 @@ func createHTTPClient(dest M.Socksaddr, dialer N.Dialer, options *option.V2RayXH
 		dialUploadConn: dialContext,
 	}
 	return client
+}
+
+// generateSessionID — Xray Config.GenerateSessionID: из session_id_table
+// длиной session_id_length, иначе UUID. Таблица уже развёрнута из
+// предустановки при разборе опций.
+func generateSessionID(options *option.V2RayXHTTPBaseOptions) string {
+	length := int(options.SessionIDLength.Rand())
+	if options.SessionIDTable == "" || length <= 0 {
+		id := uuid.New()
+		return id.String()
+	}
+	id := make([]byte, length)
+	for i := range id {
+		id[i] = options.SessionIDTable[rand.N(len(options.SessionIDTable))]
+	}
+	return string(id)
+}
+
+// resolveMode — auto как у Xray (splithttp/dialer.go): packet-up, а под
+// REALITY — stream-one, с отдельной загрузкой — stream-up.
+func resolveMode(mode string, reality, download bool) string {
+	if mode != "auto" {
+		return mode
+	}
+	if !reality {
+		return "packet-up"
+	}
+	if download {
+		return "stream-up"
+	}
+	return "stream-one"
 }

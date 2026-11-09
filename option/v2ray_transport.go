@@ -1,6 +1,7 @@
 package option
 
 import (
+	"math/big"
 	"net/http"
 	"reflect"
 	"strings"
@@ -152,6 +153,8 @@ type V2RayXHTTPBaseOptions struct {
 	UplinkDataPlacement  string                     `json:"uplink_data_placement,omitempty"`
 	UplinkDataKey        string                     `json:"uplink_data_key,omitempty"`
 	UplinkChunkSize      *Xbadoption.Range          `json:"uplink_chunk_size,omitempty"`
+	SessionIDTable       string                     `json:"session_id_table,omitempty"`
+	SessionIDLength      Xbadoption.Range           `json:"session_id_length,omitempty"`
 }
 
 type _V2RayXHTTPOptions struct {
@@ -167,6 +170,20 @@ type V2RayXHTTPDownloadOptions struct {
 	ServerOptions
 	OutboundTLSOptionsContainer
 	Detour string `json:"detour,omitempty"`
+}
+
+// XHTTPSessionIDTables — предустановленные алфавиты sessionIDTable Xray
+// (transport/internet/splithttp/config.go PredefinedTable).
+var XHTTPSessionIDTables = map[string]string{
+	"ALPHABET": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	"Alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+	"BASE36":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+	"Base62":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+	"HEX":      "0123456789ABCDEF",
+	"alphabet": "abcdefghijklmnopqrstuvwxyz",
+	"base36":   "0123456789abcdefghijklmnopqrstuvwxyz",
+	"hex":      "0123456789abcdef",
+	"number":   "0123456789",
 }
 
 const (
@@ -199,6 +216,9 @@ func (c *V2RayXHTTPOptions) UnmarshalJSON(bytes []byte) error {
 	if err != nil {
 		return err
 	}
+	if c.Download != nil && c.Mode == "stream-one" {
+		return E.New(`can not use "download" in "stream-one" mode`)
+	}
 	if c.Download != nil {
 		err = checkV2RayXHTTPBaseOptions(c.Mode, &c.Download.V2RayXHTTPBaseOptions)
 		if err != nil {
@@ -216,7 +236,9 @@ func checkV2RayXHTTPBaseOptions(mode string, options *V2RayXHTTPBaseOptions) err
 		}
 	}
 
-	if options.XPaddingBytes.From <= 0 || options.XPaddingBytes.To <= 0 {
+	// Как у Xray: не задано — умолчание 100-1000 (GetNormalizedXPaddingBytes),
+	// отказ только на явном нуле.
+	if options.XPaddingBytes != (Xbadoption.Range{}) && (options.XPaddingBytes.From <= 0 || options.XPaddingBytes.To <= 0) {
 		return E.New("x_padding_bytes cannot be disabled")
 	}
 
@@ -312,9 +334,33 @@ func checkV2RayXHTTPBaseOptions(mode string, options *V2RayXHTTPBaseOptions) err
 		return E.New("invalid negative value of maxHeaderBytes")
 	}
 
-	if options.Xmux == nil {
+	if options.SessionIDTable != "" {
+		if predefined, ok := XHTTPSessionIDTables[options.SessionIDTable]; ok {
+			options.SessionIDTable = predefined
+		}
+		if options.SessionIDLength.From <= 0 {
+			return E.New("session_id_length.from must be greater than 0")
+		}
+		for i := 0; i < len(options.SessionIDTable); i++ {
+			if options.SessionIDTable[i] >= 0x80 {
+				return E.New("session_id_table must contain only ASCII characters")
+			}
+		}
+		// Xray: пространство идентификаторов не меньше 2^31.
+		room, term := new(big.Int), new(big.Int)
+		base := big.NewInt(int64(len(options.SessionIDTable)))
+		for k := options.SessionIDLength.From; k <= options.SessionIDLength.To; k++ {
+			room.Add(room, term.Exp(base, big.NewInt(int64(k)), nil))
+		}
+		if room.Cmp(big.NewInt(2<<30)) < 0 {
+			return E.New("session_id_table or session_id_length is too small")
+		}
+	}
+
+	if options.Xmux == nil || *options.Xmux == (V2RayXHTTPXmuxOptions{}) {
 		// Умолчание Xray (18e2839, против ТСПУ): три соединения на все сессии
-		// вместо отдельного TCP+TLS на каждую (maxConcurrency 1).
+		// вместо отдельного TCP+TLS на каждую (maxConcurrency 1). Пустой
+		// "xmux": {} у Xray получает то же умолчание.
 		options.Xmux = &V2RayXHTTPXmuxOptions{}
 		options.Xmux.MaxConnections.From = 3
 		options.Xmux.MaxConnections.To = 3

@@ -30,3 +30,7 @@ func newRealityClient(ctx context.Context, logger logger.ContextLogger, serverAd
 func NewRealityServer(ctx context.Context, logger log.Logger, options option.InboundTLSOptions) (ServerConfig, error) {
 	return nil, E.New(`uTLS, which is required by reality is not included in this build, rebuild with -tags with_utls`)
 }
+
+func IsRealityClient(config Config) bool {
+	return false
+}
