@@ -90,7 +90,11 @@ func (c *UTLSClientConfig) Client(conn net.Conn) (Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &utlsALPNWrapper{utlsConnWrapper{utls.UClient(conn, c.config.Clone(), c.id)}, c.config.NextProtos}, nil
+	uConn, err := newUConn(conn, c.config.Clone(), c.id)
+	if err != nil {
+		return nil, err
+	}
+	return &utlsALPNWrapper{utlsConnWrapper{uConn}, c.config.NextProtos}, nil
 }
 
 func (c *UTLSClientConfig) SetSessionIDGenerator(generator func(clientHello []byte, sessionID []byte) error) {
@@ -353,9 +357,9 @@ var (
 func init() {
 	modernFingerprints := []utls.ClientHelloID{
 		utls.HelloChrome_Auto,
-		utls.HelloFirefox_Auto,
+		helloFirefox148,
 		utls.HelloEdge_Auto,
-		utls.HelloSafari_Auto,
+		helloSafari263,
 		utls.HelloIOS_Auto,
 	}
 	randomFingerprint = modernFingerprints[rand.Intn(len(modernFingerprints))]
@@ -375,11 +379,11 @@ func uTLSClientHelloID(name string) (utls.ClientHelloID, error) {
 	case "chrome", "":
 		return utls.HelloChrome_Auto, nil
 	case "firefox":
-		return utls.HelloFirefox_Auto, nil
+		return helloFirefox148, nil
 	case "edge":
 		return utls.HelloEdge_Auto, nil
 	case "safari":
-		return utls.HelloSafari_Auto, nil
+		return helloSafari263, nil
 	case "360":
 		return utls.Hello360_Auto, nil
 	case "qq":
