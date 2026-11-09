@@ -24,4 +24,6 @@ type VLESSOutboundOptions struct {
 	Multiplex      *OutboundMultiplexOptions `json:"multiplex,omitempty"`
 	Transport      *V2RayTransportOptions    `json:"transport,omitempty"`
 	PacketEncoding *string                   `json:"packet_encoding,omitempty"`
+	// VLESS Encryption в формате Xray: mlkem768x25519plus.… или none.
+	Encryption string `json:"encryption,omitempty"`
 }
