@@ -57,8 +57,13 @@ func (c *Conn) Write(b []byte) (n int, err error) {
 			}
 			splits := strings.Split(serverName.ServerName, ".")
 			currentIndex := serverName.Index
+			// Отбрасываются только метки публичного суффикса. Апстрим вычитал
+			// число точек во всём имени, и от любого домена оставалась одна
+			// первая метка: www.example.com резался только внутри «www».
 			if publicSuffix := publicsuffix.List.PublicSuffix(serverName.ServerName); publicSuffix != "" {
-				splits = splits[:len(splits)-strings.Count(serverName.ServerName, ".")]
+				if n := len(splits) - strings.Count(publicSuffix, ".") - 1; n > 0 {
+					splits = splits[:n]
+				}
 			}
 			if len(splits) > 1 && splits[0] == "..." {
 				currentIndex += len(splits[0]) + 1

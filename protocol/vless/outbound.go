@@ -98,10 +98,8 @@ func NewOutbound(ctx context.Context, router adapter.Router, logger log.ContextL
 	if err != nil {
 		return nil, E.Cause(err, "vless encryption")
 	}
-	// Vision в sing-vmess читает буферы TLS-соединения через reflect и поверх
-	// CommonConn работать не умеет; у Xray такое сочетание есть.
-	if outbound.encryption != nil && options.Flow != "" {
-		return nil, E.New("vless encryption with flow is not supported")
+	if outbound.encryption != nil && options.Flow != "" && !visionOverEncryption {
+		return nil, E.New("vless encryption with flow requires the badlinkname build tag")
 	}
 	outbound.client, err = vless.NewClient(options.UUID, options.Flow, logger)
 	if err != nil {

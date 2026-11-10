@@ -46,6 +46,12 @@ import (
 
 var _ ConfigCompat = (*RealityClientConfig)(nil)
 
+// IsRealityClient сообщает, что конфиг — клиент REALITY.
+func IsRealityClient(config Config) bool {
+	_, ok := config.(*RealityClientConfig)
+	return ok
+}
+
 type RealityClientConfig struct {
 	ctx                   context.Context
 	uClient               *UTLSClientConfig
