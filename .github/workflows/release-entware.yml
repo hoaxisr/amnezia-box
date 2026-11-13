@@ -1,4 +1,4 @@
-# Собирает наш sing-box (AmneziaWG/AWG3 + mieru + xhttp) под Entware-арки awg-manager
+# Собирает awgm-box (форк sing-box: AmneziaWG/AWG3 + mieru + xhttp) под Entware-арки awg-manager
 # и публикует бинари + .sha256 как release-ассеты. awg-manager/routebox их ПОТРЕБЛЯЮТ
 # (embedded.go → этот release), не пересобирают. Build-логика перенесена из
 # awg-manager/scripts/build-singbox.sh (проверена локально на mips-3.4).
@@ -87,7 +87,7 @@ jobs:
           echo "keyring: $(gpg --list-packets "$KEYRING" | grep -c ':public key packet:') keys"
           ( cd "$HOME/cronet-go" && go run ./cmd/build-naive --target="linux/${{ matrix.goarch }}" --libc=musl download-toolchain )
 
-      - name: Build sing-box (${{ matrix.arch }})
+      - name: Build awgm-box (${{ matrix.arch }})
         run: |
           set -euo pipefail
           # Версия = release-тег: единое значение для имени ассета, constant.Version
@@ -138,5 +138,5 @@ jobs:
           set -euo pipefail
           gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
             --repo "${{ github.repository }}" \
-            --title "$TAG" --notes "sing-box + AmneziaWG(AWG3) + mieru + xhttp — Entware builds" \
+            --title "$TAG" --notes "awgm-box (fork of sing-box) + AmneziaWG(AWG3) + mieru + xhttp — Entware builds" \
             || gh release upload "$TAG" dist/* --repo "${{ github.repository }}" --clobber
