@@ -170,8 +170,8 @@ github.com/hoaxisr/sing-tun v0.9.6-awgm.3 h1:68AqKXxFpgvuR+L3SbrkM/QUuYJHahIE+U7
 github.com/hoaxisr/sing-tun v0.9.6-awgm.3/go.mod h1:liMb9HPIWcFWqF6VJ/ttIY8fTSRPdRltBeSeEcXt1Dk=
 github.com/hoaxisr/sing-tun v0.9.7-awgm.2 h1:f2TRWXuokkBMM26nG8hP7BYOqwIG4cjzOMIDfnu3dtI=
 github.com/hoaxisr/sing-tun v0.9.7-awgm.2/go.mod h1:liMb9HPIWcFWqF6VJ/ttIY8fTSRPdRltBeSeEcXt1Dk=
-github.com/hoaxisr/sing-tun v0.9.7-awgm.3 h1:B+20LJXtdCg32l1x6X5ngqhlIoXFxyOQmZxZFXbt1JE=
-github.com/hoaxisr/sing-tun v0.9.7-awgm.3/go.mod h1:liMb9HPIWcFWqF6VJ/ttIY8fTSRPdRltBeSeEcXt1Dk=
+github.com/hoaxisr/sing-tun v0.9.7-awgm.4 h1:qNHEzWbaBcrOEagwwIssom9yWBZ6F1udlH7znjBgnr0=
+github.com/hoaxisr/sing-tun v0.9.7-awgm.4/go.mod h1:liMb9HPIWcFWqF6VJ/ttIY8fTSRPdRltBeSeEcXt1Dk=
 github.com/huin/goupnp v1.3.0 h1:UvLUlWDNpoUdYzb2TCn+MuTWtcjXKSza2n6CBdQ0xXc=
 github.com/huin/goupnp v1.3.0/go.mod h1:gnGPsThkYa7bFi/KWmEysQRf48l2dvR5bxr2OFckNX8=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
