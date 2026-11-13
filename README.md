@@ -1,12 +1,28 @@
-# sing-box
+# awgm-box
 
-The universal proxy platform.
+A proxy platform for routers, built for [awg-manager](https://github.com/hoaxisr/awg-manager).
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/sing-box.svg)](https://repology.org/project/sing-box/versions)
+awgm-box is an independent fork of [sing-box](https://github.com/SagerNet/sing-box)
+by nekohasekai and contributors. It is not affiliated with or endorsed by the
+sing-box project. Changes from upstream are merged as needed.
 
-## Documentation
+## What is different
 
-https://sing-box.sagernet.org
+- AmneziaWG (AWG 3.x) endpoint and outbound
+- mieru, TrustTunnel and MASQUE outbounds, XHTTP transport with Xray parity
+- VLESS Encryption (mlkem768x25519plus) client, Vision over it
+- finalmask, uTLS fingerprints and REALITY options matching Xray
+- tun stack and memory fixes for MIPS and ARM routers (Entware builds)
+
+The configuration format follows sing-box; its documentation at
+https://sing-box.sagernet.org applies unless noted. For compatibility with
+existing tooling some identifiers keep the upstream name: the Go module path,
+the Clash API version string, log lines, and release asset file names.
+
+## Builds
+
+Entware binaries for `mipsel-3.4`, `mips-3.4` and `aarch64-3.10` are published
+as release assets by the `release-entware` workflow.
 
 ## License
 
