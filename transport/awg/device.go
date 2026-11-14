@@ -205,6 +205,16 @@ func (d *Device) Close() error {
 	return nil
 }
 
+// BindUpdate reopens the UDP sockets. With auto_detect_interface the dialer
+// binds a socket to the default interface once, at creation; after a WAN
+// switch the old socket keeps sending through the vanished interface.
+func (d *Device) BindUpdate() error {
+	if !d.started.Load() {
+		return nil
+	}
+	return d.awgDevice.BindUpdate()
+}
+
 func (d *Device) Started() bool {
 	return d.started.Load()
 }

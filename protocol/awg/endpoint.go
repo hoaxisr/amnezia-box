@@ -33,6 +33,7 @@ var (
 	_ adapter.OutboundWithPreferredRoutes = (*Endpoint)(nil)
 	_ dialer.PacketDialerWithDestination  = (*Endpoint)(nil)
 	_ tun.Handler                         = (*Endpoint)(nil)
+	_ adapter.InterfaceUpdateListener     = (*Endpoint)(nil)
 )
 
 func RegisterEndpoint(registry *endpoint.Registry) {
@@ -173,6 +174,20 @@ func NewEndpoint(ctx context.Context, router adapter.Router, logger log.ContextL
 
 	ep.Device = dev
 	return ep, nil
+}
+
+// InterfaceUpdated reopens the device sockets on the new default interface,
+// as protocol/wireguard does. Without it a WAN switch (two SIMs, failover)
+// left the endpoint sending through the old interface until a reload.
+func (e *Endpoint) InterfaceUpdated(ctx context.Context) {
+	go func() {
+		if ctx.Err() != nil {
+			return
+		}
+		if err := e.BindUpdate(); err != nil {
+			e.logger.Error(E.Cause(err, "update bind"))
+		}
+	}()
 }
 
 func genIpcConfig(opts option.AwgEndpointOptions, resolvePeer func(domain string) ([]netip.Addr, error)) (string, error) {

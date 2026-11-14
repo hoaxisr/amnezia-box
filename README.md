@@ -17,12 +17,14 @@ sing-box project. Changes from upstream are merged as needed.
 The configuration format follows sing-box; its documentation at
 https://sing-box.sagernet.org applies unless noted. For compatibility with
 existing tooling some identifiers keep the upstream name: the Go module path,
-the Clash API version string, log lines, and release asset file names.
+the Clash API version string and log lines.
 
 ## Builds
 
 Entware binaries for `mipsel-3.4`, `mips-3.4` and `aarch64-3.10` are published
-as release assets by the `release-entware` workflow.
+as release assets `awgm-box-<version>-<arch>` by the `release-entware` workflow.
+The version is a build counter (`41`); `awgm-box version` prints the upstream
+sing-box release the build is based on on its second line.
 
 ## License
 
