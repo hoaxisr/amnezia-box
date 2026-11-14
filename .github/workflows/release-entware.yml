@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Release tag (напр. awg-1.14.0-alpha.48-1)"
+        description: "Release tag = версия awgm-box, счётчик сборок (напр. 41)"
         required: true
   push:
     tags:
@@ -108,7 +108,7 @@ jobs:
           fi
           echo "Build tags: $TAGS"
 
-          OUT="singbox-${VERSION}-${{ matrix.arch }}"
+          OUT="awgm-box-${VERSION}-${{ matrix.arch }}"
           ENVV=(CGO_ENABLED=$CGO GOOS=linux GOARCH=${{ matrix.goarch }})
           [ -n "${{ matrix.gomips }}" ] && ENVV+=(GOMIPS=${{ matrix.gomips }})
           env "${ENVV[@]}" go build -v -trimpath \
@@ -120,7 +120,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: sing-box-${{ matrix.arch }}
+          name: awgm-box-${{ matrix.arch }}
           path: dist/*
 
   release:

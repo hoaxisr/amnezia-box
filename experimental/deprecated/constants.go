@@ -24,10 +24,12 @@ func (n Note) Impending() bool {
 	if n.ScheduledVersion == "" {
 		return false
 	}
-	if !semver.IsValid("v" + C.Version) {
+	// awgm-box: deprecations are scheduled against upstream releases, and
+	// C.Version is the fork's build counter.
+	if !semver.IsValid("v" + C.UpstreamVersion) {
 		return false
 	}
-	versionCurrent := badversion.Parse(C.Version)
+	versionCurrent := badversion.Parse(C.UpstreamVersion)
 	versionMinor := badversion.Parse(n.ScheduledVersion).Minor - versionCurrent.Minor
 	if versionCurrent.PreReleaseIdentifier == "" && versionMinor < 0 {
 		panic("invalid deprecated note: " + n.Name)
